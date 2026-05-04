@@ -165,10 +165,47 @@ def main(
         proveedores, articulos, articulos_proveedores, report_out,
         "<env>" if resolved_db_url else "<unset>",
     )
+    if db_url:
+        # Decision (B3): el contexto DB se construye via app.create_app()
+        # (espejo de etl/import_dbfs.py), que lee DATABASE_URL del env. El
+        # flag --db-url queda wired pero no se consume hasta que tengamos
+        # un caso real para overridearlo. Loguear como TODO para no
+        # romper la contract si el usuario lo pasa.
+        logger.warning(
+            "TODO: --db-url=%s recibido pero no se usa todavia; "
+            "create_app() lee DATABASE_URL del env. Ver B3 progress.",
+            db_url,
+        )
 
     # Phase: proveedores
     click.echo(f"[xls-import] phase=proveedores file={proveedores}")
-    # TODO: mapper call (Phase 3)
+    if not dry_run:
+        # Imports tardios: dependen de BACKEND_ROOT en sys.path (definido arriba)
+        # y de que la session SQLAlchemy este disponible via Flask app context.
+        from app import create_app  # noqa: E402
+        from app.extensions import db as _db  # noqa: E402
+
+        from etl.xls.mappers import proveedores_xls  # noqa: E402
+
+        flask_app = create_app()
+        with flask_app.app_context():
+            session = _db.session
+            try:
+                rows = proveedores_xls.extract(proveedores, sheet_name="proveedor")
+                report_prov = proveedores_xls.load(session, rows, batch_size=batch_size)
+                session.commit()
+                click.echo(
+                    f"[xls-import]   inserted={report_prov.inserted} "
+                    f"updated={report_prov.updated} "
+                    f"skipped={report_prov.skipped} "
+                    f"errors={report_prov.failed}"
+                )
+            except Exception as exc:
+                session.rollback()
+                logger.exception("proveedores phase failed: %s", exc)
+                sys.exit(EXIT_FAILURE)
+    else:
+        click.echo("[xls-import]   dry-run — proveedores phase skipped")
 
     # Phase: articulos
     click.echo(f"[xls-import] phase=articulos file={articulos}")
