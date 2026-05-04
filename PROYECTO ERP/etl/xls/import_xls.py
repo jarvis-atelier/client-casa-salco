@@ -209,7 +209,47 @@ def main(
 
     # Phase: articulos
     click.echo(f"[xls-import] phase=articulos file={articulos}")
-    # TODO: mapper call (Phase 4)
+    if not dry_run:
+        # Imports tardios (deps en BACKEND_ROOT en sys.path + Flask app context).
+        # NOTE: si la fase de proveedores acaba de commitear, los nuevos
+        # ids YA estan en la DB; build_fk_caches los lee fresh.
+        from app import create_app  # noqa: E402
+        from app.extensions import db as _db  # noqa: E402
+
+        from etl.xls.mappers import articulos_xls  # noqa: E402
+
+        flask_app = create_app()
+        with flask_app.app_context():
+            session = _db.session
+            try:
+                fk_caches = articulos_xls.build_fk_caches(session)
+                rows_art, legacy_catalog, compra_zero = articulos_xls.extract(
+                    articulos,
+                    sheet_name="Sheet1",
+                    fk_caches=fk_caches,
+                    skip_compra_cero=skip_compra_cero,
+                )
+                report_art = articulos_xls.load(
+                    session, rows_art, batch_size=batch_size
+                )
+                session.commit()
+                # `legacy_catalog` y `compra_zero` quedan disponibles para B6
+                # (Report writer). Por ahora los logueamos como counts y los
+                # surface-amos via stdout. B6 los persistira al markdown.
+                click.echo(
+                    f"[xls-import]   inserted={report_art.inserted} "
+                    f"updated={report_art.updated} "
+                    f"skipped={report_art.skipped} "
+                    f"errors={report_art.failed} "
+                    f"compra_zero={len(compra_zero)} "
+                    f"legacy_rows={len(legacy_catalog)}"
+                )
+            except Exception as exc:
+                session.rollback()
+                logger.exception("articulos phase failed: %s", exc)
+                sys.exit(EXIT_FAILURE)
+    else:
+        click.echo("[xls-import]   dry-run — articulos phase skipped")
 
     # Phase: articulos_proveedores
     click.echo(f"[xls-import] phase=articulos_proveedores file={articulos_proveedores}")
