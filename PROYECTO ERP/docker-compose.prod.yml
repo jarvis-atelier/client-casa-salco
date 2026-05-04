@@ -1,0 +1,100 @@
+# Docker Compose - PRODUCCION en VPS propio
+# Uso: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+# Alternativa al deploy en Fly.io / Railway. Pensado para VPS economico (Hetzner, DigitalOcean, etc).
+# Requiere .env.prod con: POSTGRES_USER, POSTGRES_PASSWORD, JWT_SECRET_KEY, SECRET_KEY, AFIP_CUIT, etc.
+#
+# IMPORTANTE: detras de un reverse proxy con SSL (Caddy/Traefik/nginx) cuando este expuesto a Internet.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-jarvis}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Backups montables: descomentar si queres pg_dump cron en host
+      # - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # NO exponer 5432 al host en prod (solo accesible via red interna del compose)
+    # ports:
+    #   - "127.0.0.1:5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-jarvis}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_ACCESS_TOKEN_EXPIRES: ${JWT_ACCESS_TOKEN_EXPIRES:-3600}
+      JWT_REFRESH_TOKEN_EXPIRES: ${JWT_REFRESH_TOKEN_EXPIRES:-2592000}
+      # AFIP - empezar con mock+homo, switchear a pyafipws cuando este el cert real
+      AFIP_MODE: ${AFIP_MODE:-mock}
+      AFIP_HOMO: ${AFIP_HOMO:-true}
+      AFIP_CUIT: ${AFIP_CUIT}
+      AFIP_CERT_PATH: ${AFIP_CERT_PATH:-}
+      AFIP_KEY_PATH: ${AFIP_KEY_PATH:-}
+      # OCR - mock por defecto, gemini cuando este la API key
+      OCR_MODE: ${OCR_MODE:-mock}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-sonnet-20241022}
+      # CORS - lista de origins permitidos separados por coma
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://app.jarvis-core.com}
+      APP_NAME: ${APP_NAME:-Jarvis}
+      FLASK_APP: wsgi:app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persistir certs AFIP entre redeploys (subir manualmente al volume)
+      - afip_certs:/app/instance/afip_certs
+      # OCR uploads (efimeros, pero conviene persistirlos por debug)
+      - ocr_uploads:/app/instance/ocr_uploads
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # En setups single-host, el frontend hace requests a /api -> reverse proxy al backend
+        VITE_API_URL: ${FRONTEND_API_URL:-/api}
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  afip_certs:
+  ocr_uploads:

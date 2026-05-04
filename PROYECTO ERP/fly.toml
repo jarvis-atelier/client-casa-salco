@@ -1,0 +1,57 @@
+# Fly.io app config - Backend Flask + SocketIO + Postgres (Neon externo)
+# Region: Buenos Aires (eze) - latencia minima para clientes Argentina
+#
+# Setup inicial (una vez):
+#   flyctl launch --no-deploy
+#   flyctl secrets set DATABASE_URL=... JWT_SECRET_KEY=... SECRET_KEY=... AFIP_CUIT=...
+#   flyctl volumes create afip_certs --region eze --size 1
+#   flyctl deploy
+#
+# Ver docs/deploy.md para guia completa.
+
+app = "jarvis-core"
+primary_region = "eze"
+
+[build]
+  dockerfile = "backend/Dockerfile"
+
+[env]
+  PORT = "8080"
+  AFIP_MODE = "mock"
+  AFIP_HOMO = "true"
+  OCR_MODE = "mock"
+  # Secrets reales (DATABASE_URL, JWT_SECRET_KEY, etc) via `flyctl secrets set`
+  # NO commitear nada sensible aca.
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Volume para certs AFIP (persistente entre redeploys)
+[[mounts]]
+  source = "afip_certs"
+  destination = "/app/instance/afip_certs"
+  initial_size = "1gb"
+
+# Concurrency limits (gevent worker = miles de conexiones, pero rate-limit conservador)
+[http_service.concurrency]
+  type = "requests"
+  hard_limit = 200
+  soft_limit = 150

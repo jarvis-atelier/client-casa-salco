@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+dist/
+build/
+
+# Node
+node_modules/
+.pnp/
+.pnp.js
+dist/
+build/
+.vite/
+.cache/
+
+# Env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# DB local de dev
+*.sqlite
+*.sqlite3
+*.db
+instance/
+
+# Logs
+*.log
+logs/
+
+# OS
+desktop.ini
+
+# Alembic (mantener migrations pero ignorar versions generadas localmente NO — las versiones SÍ se commitean)
+# (no ignore migrations/versions/)

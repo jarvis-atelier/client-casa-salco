@@ -1,0 +1,29 @@
+node_modules/
+dist/
+.vite/
+*.log
+.env
+.env.local
+.env.*.local
+
+# Tauri (no aplica al build web)
+src-tauri/
+
+# Tests
+tests/
+coverage/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Tipos compilados
+*.tsbuildinfo

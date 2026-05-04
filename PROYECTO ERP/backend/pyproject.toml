@@ -1,0 +1,82 @@
+[project]
+name = "castulo-backend"
+version = "0.1.0"
+description = "Backend Flask para Castulo Nuevo - gestion de almacen multi-sucursal"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0",
+    "flask-sqlalchemy>=3.1",
+    "flask-migrate>=4.0",
+    "flask-jwt-extended>=4.6",
+    "flask-cors>=4.0",
+    "flask-socketio>=5.3",
+    "flask-smorest>=0.44",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.1",
+    "alembic>=1.13",
+    "pydantic[email]>=2.6",
+    "pydantic-settings>=2.2",
+    "python-dotenv>=1.0",
+    "bcrypt>=4.1",
+    "redis>=5.0",
+    "celery>=5.3",
+    "marshmallow>=3.21",
+    "gunicorn>=21.2",
+    "gevent>=23.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "pytest-flask>=1.3",
+    "ruff>=0.3",
+    "mypy>=1.9",
+    "httpx>=0.27",
+    "faker>=24.0",
+]
+etl = [
+    "dbfread>=2.0",
+    "click>=8.1",
+    "tqdm>=4.66",
+]
+afip = [
+    "pyafipws>=2024",
+    "lxml>=5.0",
+    "cryptography>=42",
+    "PyOpenSSL>=24",
+    "qrcode[pil]>=7.4",
+    "httpx>=0.27",
+]
+analytics = [
+    "mlxtend>=0.23",
+    "pandas>=2.0",
+    "numpy>=1.26",
+]
+exports = [
+    "openpyxl>=3.1",
+]
+ocr = [
+    "anthropic>=0.40",
+    "google-generativeai>=0.8",
+    "pillow>=10.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

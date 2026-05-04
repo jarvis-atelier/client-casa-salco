@@ -1,0 +1,45 @@
+[project]
+name = "jarvis-pos-agent"
+version = "0.1.0"
+description = "Local POS printing agent — bridges Jarvis Core web app to 3NSTAR ESC/POS thermal printers (USB / Ethernet) with mock PDF preview for development"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0",
+    "flask-cors>=4.0",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "python-escpos>=3.0",
+    "reportlab>=4.0",
+    "pyusb>=1.2",
+    "qrcode[pil]>=7.4",
+    "Pillow>=10.0",
+    "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.3",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+jarvis-agent = "jarvis_agent.__main__:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["jarvis_agent*"]

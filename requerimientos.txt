@@ -1,0 +1,338 @@
+🧩 1. VISIÓN DEL PRODUCTO
+
+Sistema integral de gestión para supermercados que reemplace Dragonfish, enfocado en:
+
+Automatización (principal driver)
+Usabilidad (evitar fricción actual)
+Integración (pagos, balanzas)
+Operación remota
+Eliminación de tareas administrativas manuales
+
+👉 Objetivo clave del cliente:
+
+“Prefiero pagar un sistema más caro si me ahorro un empleado administrativo”
+
+🏗️ 2. ALCANCE PMV (Módulos incluidos)
+Core del PMV:
+Ventas (POS)
+Compras + Recepción inteligente
+Stock
+Productos
+Proveedores
+OCR Facturas (semi-automatizado)
+Dashboard operativo
+Integraciones (pagos + balanza)
+Acceso remoto + móvil básico
+📦 3. REQUERIMIENTOS FUNCIONALES
+3.1 MÓDULO DE PRODUCTOS
+Problema actual
+Carga manual lenta
+Cambios frecuentes de código de barras
+No hay unificación de productos
+Requerimientos
+
+RF-01: Maestro de productos unificado
+
+Producto lógico único con múltiples códigos de barra
+Asociación:
+Código principal
+Códigos alternativos (por proveedor)
+
+RF-02: Gestión de unidades
+
+Unidad base (ej: KG)
+Subunidades (ej: gramos, unidades)
+
+RF-03: Productos fraccionables
+
+Soporte para:
+Fiambrería
+Panadería
+Productos sueltos
+
+RF-04: Edición masiva
+
+Importación/exportación Excel
+Actualización de precios masiva
+
+RF-05: Historial
+
+Cambios de precio
+Cambios de proveedor
+3.2 MÓDULO DE PROVEEDORES
+
+RF-06: Gestión de proveedores
+
+Datos básicos
+Frecuencia de visita (semanal, quincenal, etc.)
+
+RF-07: Catálogo por proveedor
+
+Productos que vende
+Presentaciones
+Precios históricos
+3.3 MÓDULO DE COMPRAS
+⚠️ ESTE ES EL MÓDULO CRÍTICO DEL SISTEMA
+
+Problema principal:
+
+“Tengo que cargar las boletas manualmente y comparar a ojo”
+
+Requerimientos
+
+RF-08: Orden de compra
+
+Creación manual o sugerida
+Basada en:
+Stock actual
+Ventas históricas
+Frecuencia proveedor
+
+RF-09: Recepción de mercadería (ESCÁNER)
+
+Escaneo de productos recibidos
+Carga rápida por código de barras
+Registro de cantidades reales
+
+RF-10: Conciliación automática (CORE FEATURE)
+
+Sistema debe comparar:
+
+Orden de compra
+Recepción real
+Factura proveedor (OCR)
+
+Y detectar:
+
+Faltantes
+Sobrantes
+Productos incorrectos
+Diferencias de precio
+
+👉 Mostrar en UI:
+
+Verde: OK
+Amarillo: diferencia leve
+Rojo: error crítico
+
+RF-11: Manejo de códigos cambiantes
+
+Matching inteligente:
+Por descripción
+Por proveedor
+Por historial
+3.4 OCR DE FACTURAS
+
+RF-12: Carga de factura por imagen/PDF
+
+Subida manual o foto móvil
+
+RF-13: Extracción automática
+
+Proveedor
+Fecha
+Productos
+Cantidades
+Precios
+
+RF-14: Validación asistida
+
+Usuario corrige si OCR falla
+3.5 MÓDULO DE STOCK
+
+RF-15: Stock en tiempo real
+
+Por sucursal
+
+RF-16: Movimientos de stock
+
+Entrada (compra)
+Salida (venta)
+Ajustes
+
+RF-17: Alertas
+
+Bajo stock
+Próximos a vencer
+3.6 POS (VENTAS)
+Problema actual
+Integraciones débiles
+Carga manual de pagos
+Requerimientos
+
+RF-18: Interfaz rápida de caja
+
+Búsqueda instantánea (tipo Odoo)
+Escaneo de productos
+
+RF-19: Integración con balanza
+
+Lectura automática de peso
+Integración con Systel
+
+RF-20: Medios de pago
+
+Efectivo
+Tarjeta
+QR
+
+RF-21: Integraciones externas
+
+Mercado Pago
+Clover
+Payway
+
+👉 Objetivo:
+
+Evitar ingreso manual de montos
+
+RF-22: Cierre de caja
+
+Totales por medio de pago
+Diferencias
+3.7 DASHBOARD (CLAVE UX)
+Problema actual:
+
+“No uso reportes porque son engorrosos”
+
+Requerimientos
+
+RF-23: Dashboard principal (Home)
+
+Debe mostrar:
+
+Ventas del día
+Flujo de caja
+Alertas de stock
+Productos a vencer
+
+RF-24: Calendario financiero
+
+👉 Feature MUY VALORADA
+
+Acreditaciones de tarjetas
+Pagos a proveedores
+Flujo proyectado
+
+RF-25: Panel por rol
+
+Dueño:
+KPIs
+Repositor:
+Productos a reponer / vencer
+Caja:
+Solo POS
+3.8 ACCESO REMOTO
+
+RF-26: Web app
+
+Accesible desde cualquier lugar
+
+RF-27: Mobile-friendly
+
+Para control remoto del negocio
+3.9 GESTIÓN DE USUARIOS
+
+RF-28: Roles
+
+Admin
+Caja
+Repositor
+Compras
+3.10 IMPORTACIÓN DE DATOS
+
+RF-29: Importación Excel
+
+Productos
+Precios
+Proveedores
+⚙️ 4. REQUERIMIENTOS NO FUNCIONALES
+4.1 Performance
+Búsqueda de productos < 300ms
+POS sin latencia
+4.2 Disponibilidad
+Cloud-based (evitar caídas por updates)
+Sin necesidad de cerrar el negocio
+
+👉 Problema actual:
+
+“Tenemos que cerrar 2 o 3 horas para actualizar”
+
+4.3 Escalabilidad
+Multi sucursal
+Multi caja simultánea
+4.4 Seguridad
+Roles y permisos
+Logs de acciones
+4.5 Integrabilidad
+API REST
+Webhooks (pagos)
+📱 5. MVP MOBILE (IMPORTANTE)
+
+RF-30: App ligera para empleados
+
+Funcionalidades:
+
+Escaneo productos
+Recepción mercadería
+Consulta stock
+Alertas vencimiento
+🔌 6. INTEGRACIONES
+Pagos
+Mercado Pago
+Clover
+Payway
+Hardware
+Balanza Systel
+🚀 7. ROADMAP PROPUESTO
+Fase 1 (PMV)
+POS
+Productos
+Stock
+Compras básicas
+Recepción
+Dashboard simple
+Fase 2
+OCR
+Conciliación inteligente
+Integraciones completas
+Fase 3
+Predicción de compras
+App mobile completa
+Fase 4
+E-commerce
+Dropshipping
+🧠 8. DIFERENCIADORES CLAVE DEL SISTEMA
+1. Conciliación automática (killer feature)
+
+Evita:
+
+errores
+fraude
+tiempo manual
+2. OCR de facturas
+
+Ataca el mayor dolor del cliente
+
+3. UX tipo “buscador moderno”
+
+👉 Reemplaza navegación lenta de Dragonfish
+
+4. Automatización de pagos
+
+👉 elimina carga manual
+
+⚠️ 9. RIESGOS A CONTROLAR
+Calidad OCR (facturas distintas)
+Matching productos (códigos variables)
+Integraciones hardware (balanza)
+Performance en POS
+✅ 10. DEFINICIÓN DE ÉXITO DEL PMV
+
+El sistema será exitoso si:
+
+✔ Puede operar una caja completa
+✔ Permite recibir mercadería sin Excel
+✔ Reduce carga manual de facturas
+✔ Permite control remoto
+✔ Mejora velocidad vs Dragonfish

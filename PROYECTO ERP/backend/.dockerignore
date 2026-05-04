@@ -1,0 +1,55 @@
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local DB y uploads
+instance/*.db
+instance/*.sqlite
+instance/*.sqlite3
+instance/ocr_uploads/
+
+# Env (NUNCA copiar .env real al image)
+.env
+.env.local
+.env.*.local
+
+# Egg info / build
+*.egg-info/
+*.egg
+build/
+dist/
+
+# Logs
+*.log
+
+# Tests (no se ejecutan en runtime)
+tests/
+
+# Docs no van al runtime
+docs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Git
+.git/
+.gitignore
