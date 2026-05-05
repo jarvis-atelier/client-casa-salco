@@ -20,6 +20,10 @@ FAMILIAS: list[tuple[str, str, int]] = [
     ("LIM", "Limpieza", 80),
     ("HIG", "Higiene personal", 90),
     ("DRU", "Drugstore", 100),
+    # Fallback para imports legacy (xls): codigo lowercase + hyphen es
+    # intencional — `articulos_xls.build_fk_caches()` busca exactamente
+    # `"sin-familia"`. Orden 999 lo deja siempre al final en cualquier sort.
+    ("sin-familia", "Sin familia", 999),
 ]
 
 # (fam, rubro_cod, nombre)
@@ -83,6 +87,9 @@ RUBROS: list[tuple[str, str, str]] = [
     ("DRU", "PIL", "Pilas y lamparitas"),
     ("DRU", "BOL", "Bolsas y envases"),
     ("DRU", "PAP", "Papelería"),
+    # Fallback para imports legacy (xls). `articulos_xls.build_fk_caches()`
+    # lo busca via composite key (codigo, familia_id) bajo `sin-familia`.
+    ("sin-familia", "sin-rubro", "Sin rubro"),
 ]
 
 # (fam, rubro, sub_cod, nombre)
