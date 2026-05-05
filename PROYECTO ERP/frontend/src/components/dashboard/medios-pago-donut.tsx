@@ -12,14 +12,15 @@ interface MediosPagoDonutProps {
   loading: boolean;
 }
 
+// Paleta CASA SALCO: cobalt + deep navy + variantes neutras (azules, grises, slate).
 const APPLE_PALETTE = [
-  "hsl(211 100% 50%)",
-  "hsl(211 70% 65%)",
+  "hsl(226 67% 36%)", // CASA SALCO cobalt
+  "hsl(233 75% 24%)", // CASA SALCO deep navy
   "hsl(220 15% 45%)",
-  "hsl(211 90% 35%)",
+  "hsl(226 67% 50%)",
   "hsl(220 10% 60%)",
-  "hsl(200 50% 55%)",
-  "hsl(211 50% 75%)",
+  "hsl(226 50% 70%)",
+  "hsl(226 40% 80%)",
   "hsl(220 20% 35%)",
   "hsl(220 8% 70%)",
 ];

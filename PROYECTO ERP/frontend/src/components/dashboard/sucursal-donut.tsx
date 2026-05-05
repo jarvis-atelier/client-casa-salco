@@ -12,15 +12,15 @@ interface SucursalDonutProps {
   loading: boolean;
 }
 
-// Paleta Apple-like: Apple Blue + variantes neutras (azules, grises, slate).
+// Paleta CASA SALCO: cobalt + deep navy + variantes neutras (azules, grises, slate).
 // Suficiente para 4-6 sucursales.
 const APPLE_PALETTE = [
-  "hsl(211 100% 50%)", // Apple Blue
-  "hsl(211 70% 65%)", // azul más claro
+  "hsl(226 67% 36%)", // CASA SALCO cobalt
+  "hsl(233 75% 24%)", // CASA SALCO deep navy
   "hsl(220 15% 45%)", // slate medio
-  "hsl(211 90% 35%)", // azul oscuro
+  "hsl(226 67% 50%)", // cobalt medio
   "hsl(220 10% 60%)", // gris cálido
-  "hsl(200 50% 55%)", // azul cyan
+  "hsl(226 50% 70%)", // cobalt claro
 ];
 
 interface PieRow {
