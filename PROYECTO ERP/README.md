@@ -59,6 +59,17 @@ cd etl
 python import_dbfs.py --source ../../viejo/DBF --dry-run
 ```
 
+### Importación desde Excel legacy
+
+Para importar productos / proveedores / catálogo desde los `.xls` legacy de
+CASA SALCO (formato BIFF, Excel 97-2003), ver
+[etl/xls/README.md](etl/xls/README.md). Atajos:
+
+```bash
+make etl-import-xls-dry   # dry-run, no escribe a la DB
+make etl-import-xls       # corrida real (snapshot pg_dump previo recomendado)
+```
+
 ## Roadmap
 
 - **Fase 1** (MVP — 8-10 sem): sync de precios multi-sucursal + ETL + artículos + dashboard básico
