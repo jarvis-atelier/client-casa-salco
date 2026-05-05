@@ -129,8 +129,10 @@ Re-correr es seguro. La política de upsert por entidad:
 
 Cada UPDATE solo machaca campos seteados desde el `.xls` (`descripcion`, `costo`,
 `pvp_base`, `unidad_medida`, `proveedor_principal_id`, `familia_id`, `rubro_id`).
-NO toca `marca_id`, `descripcion_corta`, `codigo_barras`, `iva_porc` — preserva
-valores que pudieran haber sido seteados por el importer DBF u otra fuente.
+NO toca `marca_id`, `descripcion_corta`, `iva_porc` — preserva valores que
+pudieran haber sido seteados por el importer DBF u otra fuente. Tampoco toca
+`articulo_codigos` (los códigos de barra viven en una tabla 1:N — ver sección
+"Cambio de schema" más abajo).
 
 ## Reports
 
@@ -175,11 +177,55 @@ Como secundario (rollback quirúrgico, no recomendado para data masiva), se podr
 hacer `DELETE WHERE created_at >= <timestamp>` directo en SQL, pero `pg_restore`
 es más seguro y documentado.
 
+## Cambio de schema: `codigo_barras` → `ArticuloCodigo` (revision `e5f6a7b8c9d0`)
+
+A partir del change `articulo-multi-codigo-migration` (mayo 2026), el campo
+legacy `Articulo.codigo_barras` (String(50) singular) fue eliminado. Los códigos
+de barra ahora viven en la tabla 1:N `articulo_codigos` con un campo `tipo`:
+
+| `tipo`        | Significado                                                        |
+|---------------|--------------------------------------------------------------------|
+| `principal`   | El código principal del articulo (lo que antes era `codigo_barras`). |
+| `alterno`     | Códigos alternativos (poblados por changes futuros).               |
+| `empaquetado` | Códigos de empaquetado (caja x N, fardo, etc.).                    |
+| `interno`     | Códigos internos (no escaneables, uso administrativo).             |
+
+Constraint: `UNIQUE (articulo_id, codigo)` por par — un mismo código puede
+existir en distintos articulos (no UNIQUE global).
+
+### Implicancias para este importer
+
+- **El xls importer NO toca `articulo_codigos`.** Los códigos vienen de la
+  sheet `EMPAQUETADOS DE PRODUCTOS` (File 1, 22683 filas), que sigue siendo
+  scope del próximo change `xls-empaquetados-y-presentaciones`.
+- En la tabla "Column → Field Mapping" del spec, la columna `(derived) →
+  Articulo.codigo_barras` (NULL) ya no aplica: el target legacy fue eliminado.
+  El próximo change escribirá directamente en `articulo_codigos` con el `tipo`
+  correspondiente.
+- El importer DBF (`etl/mappers/articulos.py`) sí escribe el código principal,
+  vía un par dict `_principal_codigo` que el `load()` pop-ea y persiste como
+  `ArticuloCodigo(tipo='principal')` en un segundo paso (post-flush del
+  Articulo padre).
+
+### API y POS
+
+- Endpoint para lookup exact-match desde el POS:
+  `GET /api/v1/articulos/by-codigo/<codigo>` — retorna 200 + `ArticuloOut` o
+  404 si no existe. Roles habilitados: mismos que `GET /articulos`.
+- Payload de creación (`POST /articulos`): el campo se llama `codigo_principal`
+  (singular, opcional) en el body; el server crea el child row con
+  `tipo='principal'`.
+- Lectura: `Articulo.codigos[]` viene populado vía relationship `selectin`,
+  sin N+1.
+- UI label: se mantiene literal "Código de barras" en el form de alta — Omar's
+  convención de UX para preservar terminología legacy del usuario.
+
 ## Limitaciones conocidas
 
 - **Sheet `EMPAQUETADOS DE PRODUCTOS`** (22683 filas en File 1) NO se importa.
-  Diferida al próximo change `articulo-multi-codigo-y-presentaciones`. El report
-  lo lista en `## Sheets skipped`.
+  Diferida al próximo change `xls-empaquetados-y-presentaciones`, que escribirá
+  los códigos en `articulo_codigos` con `tipo='empaquetado'` (ver "Cambio de
+  schema" más arriba). El report lo lista en `## Sheets skipped`.
 - **Catálogo de rubros / familias / marcas**: los ~612 rubros, ~2052 marcas, etc.
   presentes en el `.xls` NO se promueven a las tablas reales en este import.
   Quedan como raw values en el report (`## Raw catalog values preserved`) para
@@ -187,7 +233,7 @@ es más seguro y documentado.
   `rubro_id = sin-rubro.id`, `familia_id = sin-familia.id`, `marca_id = NULL`.
 - **Columna `cantidad`** de `RELACION PRODUCTOS PROVEEDOR`: se descarta. El
   modelo `ArticuloProveedor` no tiene campo de presentación; diferido al change
-  `articulo-multi-codigo-y-presentaciones`.
+  `xls-empaquetados-y-presentaciones`.
 - **Flag `--db-url`** está cableado pero NO consumido. El importer construye el
   contexto con `app.create_app()`, que lee `DATABASE_URL` del environment.
   Pasar `--db-url` solo loguea un WARNING.
