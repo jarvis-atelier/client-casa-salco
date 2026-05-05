@@ -48,6 +48,9 @@ Thumbs.db
 *.db
 instance/
 
+# Local DB backups (created by xls importer pre-flight)
+backups/
+
 # Logs
 *.log
 logs/
