@@ -35,6 +35,7 @@ from sqlalchemy import delete, insert, select, text
 
 from app.extensions import db
 from app.models.articulo import Articulo, ArticuloProveedor, UnidadMedidaEnum
+from app.models.articulo_codigo import ArticuloCodigo, TipoCodigoArticuloEnum
 from app.models.cae import Cae
 from app.models.categorias import Familia, Marca, Rubro, Subrubro
 from app.models.cliente import Cliente, CondicionIvaEnum
@@ -143,6 +144,7 @@ _WIPE_ORDER = [
     "precios_sucursal",
     "stock_sucursal",
     "articulo_proveedores",
+    "articulo_codigos",
     "articulos",
     "subrubros",
     "rubros",
@@ -481,9 +483,13 @@ def _seed_articulos(
     existing_cods = {
         c for (c,) in db.session.execute(select(Articulo.codigo)).all()
     }
+    # Principales ya existentes en articulo_codigos: tipo='principal'
+    # (la columna Articulo.codigo_barras ya no existe — migración a 1:N).
     existing_barras = {
         b for (b,) in db.session.execute(
-            select(Articulo.codigo_barras).where(Articulo.codigo_barras.is_not(None))
+            select(ArticuloCodigo.codigo).where(
+                ArticuloCodigo.tipo == TipoCodigoArticuloEnum.principal
+            )
         ).all()
     }
 
@@ -491,6 +497,9 @@ def _seed_articulos(
     proveedores_ordered = proveedores
 
     rows: list[dict[str, Any]] = []
+    # Mapa natural-key -> codigo principal (EAN-13) que escribiremos en
+    # `articulo_codigos` despues del bulk insert de articulos (Pass 2).
+    barras_por_codigo: dict[str, str] = {}
     counter_by_rubro: dict[tuple[str, str], int] = {}
 
     marcas_by_name = {m.nombre: m for m in marcas}
@@ -602,7 +611,6 @@ def _seed_articulos(
             rows.append(
                 {
                     "codigo": codigo,
-                    "codigo_barras": barras,
                     "descripcion": descripcion,
                     "descripcion_corta": desc_corta,
                     "familia_id": familia.id,
@@ -619,14 +627,39 @@ def _seed_articulos(
                     "activo": activo,
                 }
             )
+            # Pass 2 (post-flush) escribira esto via ArticuloCodigo.
+            barras_por_codigo[codigo] = barras
 
-    # Bulk insert en batches de 500
+    # --- Pass 1: bulk insert de articulos (sin codigo_barras — la columna
+    # ya no existe; el codigo principal va al hijo `articulo_codigos`).
     for i in range(0, len(rows), 500):
         db.session.execute(insert(Articulo), rows[i : i + 500])
     db.session.commit()
 
     out = db.session.query(Articulo).order_by(Articulo.id).all()
-    echo(f"articulos OK ({len(out)})")
+
+    # --- Pass 2: bulk insert de codigos principales en articulo_codigos.
+    # Mapeamos natural-key (codigo) -> articulo.id para zippear con el
+    # EAN-13 generado en Pass 1.
+    id_por_codigo: dict[str, int] = {a.codigo: a.id for a in out}
+    codigo_rows: list[dict[str, Any]] = []
+    for codigo_articulo, barras in barras_por_codigo.items():
+        art_id = id_por_codigo.get(codigo_articulo)
+        if art_id is None:
+            # No deberia pasar — el bulk insert es exhaustivo —, pero defensivo.
+            continue
+        codigo_rows.append(
+            {
+                "articulo_id": art_id,
+                "codigo": barras,
+                "tipo": TipoCodigoArticuloEnum.principal.value,
+            }
+        )
+    for i in range(0, len(codigo_rows), 500):
+        db.session.execute(insert(ArticuloCodigo), codigo_rows[i : i + 500])
+    db.session.commit()
+
+    echo(f"articulos OK ({len(out)})  +  codigos principales ({len(codigo_rows)})")
     return out
 
 

@@ -34,7 +34,7 @@ Verificado contra `PROYECTO ERP/backend/app/models/articulo.py`:
 | MARCA               | marca_id                              | NULL ALWAYS (design Section 4)         |
 | (derivado)          | descripcion_corta                     | None (no source)                       |
 | (derivado)          | iva_porc                              | Decimal("21") default por modelo       |
-| (derivado)          | codigo_barras                         | None (RF-01 deferido)                  |
+| (derivado)          | (codigo principal)                    | None — RF-01 lo escribe Change B EMPAQUETADOS mapper en `articulo_codigos` |
 | NOMBRE PROVEEDOR    | --                                    | ignorado (ya en Proveedor.razon_social) |
 | Marca NOMBRE        | --                                    | ignorado                               |
 | GRUPDESC            | --                                    | preservado en raw_catalog (no modelo)  |
@@ -418,8 +418,9 @@ def extract(
             "marca_id": None,  # by design
             "costo": costo,
             "pvp_base": pvp_base,
-            # iva_porc, codigo_barras, controla_stock/vencimiento -> usar
-            # defaults del modelo (no overrideamos en INSERT).
+            # iva_porc, controla_stock/vencimiento -> usar defaults del
+            # modelo (no overrideamos en INSERT). El codigo principal va
+            # al hijo `articulo_codigos` y lo escribe Change B (EMPAQUETADOS).
             "_warns": warns,
             "_row": row_idx,
         })
@@ -454,7 +455,9 @@ def load(
       `marca_id` (siempre NULL en el xls — preservar marcas asignadas
       manualmente o por DBF importer si las hubiera).
       `descripcion_corta` (None en xls — no machacar si el DBF lo lleno).
-      `codigo_barras`, `iva_porc`, controles de stock — no overrideamos.
+      `iva_porc`, controles de stock — no overrideamos. El codigo
+      principal vive en `articulo_codigos` (1:N hijo); el xls importer
+      no toca esa tabla (Change B EMPAQUETADOS la pobla).
 
     Insert path: crea Articulo con todos los campos mapeados; `marca_id=None`,
     `descripcion_corta=None`. El modelo aplica defaults para `iva_porc=21`,

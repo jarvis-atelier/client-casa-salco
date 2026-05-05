@@ -13,6 +13,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.models.articulo import Articulo, UnidadMedidaEnum
+from app.models.articulo_codigo import ArticuloCodigo, TipoCodigoArticuloEnum
 from app.models.categorias import Familia, Marca, Rubro, Subrubro
 from app.models.cliente import Cliente, CondicionIvaEnum
 from app.models.precio import PrecioSucursal
@@ -232,7 +233,6 @@ def seed_demo() -> None:
         if art is None:
             art = Articulo(
                 codigo=codigo,
-                codigo_barras=barras,
                 descripcion=desc,
                 familia_id=familias_by_code[fam].id,
                 rubro_id=rubros_by_key[(fam, rub)].id,
@@ -244,6 +244,15 @@ def seed_demo() -> None:
                 pvp_base=pvp,
                 activo=True,
             )
+            # Codigo principal va al hijo `articulo_codigos`
+            # (la columna Articulo.codigo_barras ya no existe).
+            if barras:
+                art.codigos.append(
+                    ArticuloCodigo(
+                        codigo=barras,
+                        tipo=TipoCodigoArticuloEnum.principal,
+                    )
+                )
             db.session.add(art)
         articulos_created.append(art)
 

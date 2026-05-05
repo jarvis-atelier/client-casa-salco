@@ -24,6 +24,7 @@ from typing import Any
 from dbfread import DBF
 
 from app.models import Articulo, Familia, Proveedor, Rubro
+from app.models.articulo_codigo import ArticuloCodigo, TipoCodigoArticuloEnum
 
 from .common import (
     LoadReport,
@@ -92,7 +93,11 @@ def extract(source_dir: Path, encoding: str = "cp1252") -> Iterator[dict]:
         yield {
             "codigo": str(int(codigo)) if isinstance(codigo, (int, float)) else str(codigo).strip(),
             "descripcion": desc,
-            "codigo_barras": codigo_barras,
+            # Codigo principal: NO es columna del modelo (la columna
+            # Articulo.codigo_barras fue removida en favor del 1:N
+            # `articulo_codigos`). El loader lo consume y lo escribe como
+            # ArticuloCodigo(tipo='principal') tras flushear el Articulo.
+            "_principal_codigo": codigo_barras,
             "_legacy_rubro": int(legacy_rubro) if legacy_rubro else None,
             "_legacy_linea": int(legacy_linea) if legacy_linea else None,
             "_legacy_proveedor": (
@@ -152,6 +157,12 @@ def load(
             legacy_rubro = row.pop("_legacy_rubro", None)
             _legacy_linea = row.pop("_legacy_linea", None)  # noqa: F841 - no usado aun
             legacy_prov = row.pop("_legacy_proveedor", None)
+            # Codigo principal (ex `Articulo.codigo_barras`) — escrito como
+            # hijo `ArticuloCodigo(tipo='principal')` post-flush. Pop ANTES
+            # de pasar el dict a `Articulo(**row)` (no es columna del modelo).
+            principal_codigo = row.pop("_principal_codigo", None)
+            if principal_codigo is not None:
+                principal_codigo = str(principal_codigo).strip() or None
 
             # Resolver rubro
             rubro_obj: Rubro | None = None
@@ -187,6 +198,14 @@ def load(
             current = existing.get(codigo)
             if current is None:
                 new = Articulo(**row)
+                # Append principal codigo via relationship (cascades on flush).
+                if principal_codigo:
+                    new.codigos.append(
+                        ArticuloCodigo(
+                            codigo=principal_codigo,
+                            tipo=TipoCodigoArticuloEnum.principal,
+                        )
+                    )
                 if not dry_run:
                     session.add(new)
                 existing[codigo] = new
@@ -206,6 +225,23 @@ def load(
                     elif old != value:
                         if not dry_run:
                             setattr(current, key, value)
+                        changed = True
+                # Idempotent upsert del codigo principal: si NO existe ya
+                # un (articulo_id, codigo) que matchee, lo agregamos.
+                # (UNIQUE constraint garantiza no-duplicados; detectamos
+                # antes en lugar de rescatar IntegrityError.)
+                if principal_codigo:
+                    has_principal = any(
+                        c.codigo == principal_codigo for c in current.codigos
+                    )
+                    if not has_principal:
+                        if not dry_run:
+                            current.codigos.append(
+                                ArticuloCodigo(
+                                    codigo=principal_codigo,
+                                    tipo=TipoCodigoArticuloEnum.principal,
+                                )
+                            )
                         changed = True
                 if changed:
                     report.updated += 1
