@@ -9,6 +9,7 @@ from sqlalchemy import or_, select
 
 from app.extensions import db
 from app.models.articulo import Articulo
+from app.models.articulo_codigo import ArticuloCodigo, TipoCodigoArticuloEnum
 from app.models.precio import PrecioSucursal
 from app.schemas.articulo import ArticuloCreate, ArticuloOut, ArticuloUpdate
 from app.schemas.precio import PrecioSucursalOut
@@ -35,12 +36,19 @@ def list_articulos():
         stmt = stmt.where(Articulo.activo.is_(True))
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(
-            or_(
-                Articulo.codigo.ilike(like),
-                Articulo.codigo_barras.ilike(like),
-                Articulo.descripcion.ilike(like),
+        # JOIN con articulo_codigos (outer) para que la búsqueda por código
+        # alcance principal/alterno/empaquetado/interno además de codigo y descripción.
+        # `distinct()` evita duplicados cuando un articulo tiene varios codigos que matchean.
+        stmt = (
+            stmt.outerjoin(ArticuloCodigo, ArticuloCodigo.articulo_id == Articulo.id)
+            .where(
+                or_(
+                    Articulo.codigo.ilike(like),
+                    Articulo.descripcion.ilike(like),
+                    ArticuloCodigo.codigo.ilike(like),
+                )
             )
+            .distinct()
         )
     if familia_id:
         stmt = stmt.where(Articulo.familia_id == familia_id)
@@ -69,10 +77,48 @@ def create_articulo():
         )
     if db.session.query(Articulo).filter(Articulo.codigo == payload.codigo).first():
         return error_response("codigo duplicado", 409, "duplicate")
-    art = Articulo(**payload.model_dump())
+
+    # Separar `codigo_principal` (no es columna de articulos; va al child table).
+    data = payload.model_dump()
+    codigo_principal = data.pop("codigo_principal", None)
+
+    art = Articulo(**data)
     db.session.add(art)
+
+    if codigo_principal:
+        art.codigos.append(
+            ArticuloCodigo(
+                codigo=codigo_principal,
+                tipo=TipoCodigoArticuloEnum.principal,
+            )
+        )
+
     db.session.commit()
     return jsonify(ArticuloOut.model_validate(art).model_dump(mode="json")), 201
+
+
+@bp.get("/by-codigo/<string:codigo>")
+@roles_required("admin", "supervisor", "cajero", "fiambrero", "repositor", "contador")
+def get_articulo_by_codigo(codigo: str):
+    """Búsqueda exacta por código (POS hot path) — sin LIKE.
+
+    Resuelve el primer Articulo cuyo `articulo_codigos.codigo` coincida exactamente
+    con el valor escaneado. Si más de un articulo tuviera el mismo código (la UNIQUE
+    es por par `(articulo_id, codigo)`, no global), se devuelve el primero encontrado.
+    """
+    stmt = (
+        select(Articulo)
+        .join(ArticuloCodigo, ArticuloCodigo.articulo_id == Articulo.id)
+        .where(
+            ArticuloCodigo.codigo == codigo,
+            Articulo.deleted_at.is_(None),
+        )
+        .limit(1)
+    )
+    art = db.session.execute(stmt).scalars().first()
+    if art is None:
+        return error_response("articulo no encontrado", 404, "not_found")
+    return jsonify(ArticuloOut.model_validate(art).model_dump(mode="json"))
 
 
 @bp.get("/<int:art_id>")

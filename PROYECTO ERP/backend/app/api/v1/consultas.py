@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from app.extensions import db
 from app.models.alerta import Alerta, EstadoAlertaEnum, SeveridadEnum, TipoAlertaEnum
 from app.models.articulo import Articulo
+from app.models.articulo_codigo import ArticuloCodigo
 from app.models.cae import Cae
 from app.models.cliente import Cliente
 from app.models.factura import EstadoComprobanteEnum, Factura, TipoComprobanteEnum
@@ -245,12 +246,18 @@ def _query_articulos(session: Session, *, for_excel: bool):
     stmt = select(Articulo).where(Articulo.deleted_at.is_(None))
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(
-            or_(
-                Articulo.codigo.ilike(like),
-                Articulo.descripcion.ilike(like),
-                Articulo.codigo_barras.ilike(like),
+        # JOIN outer con articulo_codigos: matchea contra cualquier codigo del articulo
+        # (principal/alterno/empaquetado/interno). `distinct()` evita duplicados.
+        stmt = (
+            stmt.outerjoin(ArticuloCodigo, ArticuloCodigo.articulo_id == Articulo.id)
+            .where(
+                or_(
+                    Articulo.codigo.ilike(like),
+                    Articulo.descripcion.ilike(like),
+                    ArticuloCodigo.codigo.ilike(like),
+                )
             )
+            .distinct()
         )
     if activo is not None:
         stmt = stmt.where(Articulo.activo.is_(activo.lower() in ("1", "true", "yes")))
