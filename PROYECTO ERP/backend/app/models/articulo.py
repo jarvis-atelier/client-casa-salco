@@ -4,6 +4,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -19,6 +20,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, SoftDeleteMixin, TimestampMixin
 
+if TYPE_CHECKING:
+    from .articulo_codigo import ArticuloCodigo
+
 
 class UnidadMedidaEnum(enum.StrEnum):
     unidad = "unidad"
@@ -33,7 +37,6 @@ class Articulo(Base, TimestampMixin, SoftDeleteMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     codigo: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
-    codigo_barras: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     descripcion: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     descripcion_corta: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
@@ -89,6 +92,12 @@ class Articulo(Base, TimestampMixin, SoftDeleteMixin):
     proveedor_principal = relationship("Proveedor", foreign_keys=[proveedor_principal_id])
     proveedores: Mapped[list[ArticuloProveedor]] = relationship(
         "ArticuloProveedor", back_populates="articulo", cascade="all, delete-orphan"
+    )
+    codigos: Mapped[list[ArticuloCodigo]] = relationship(
+        "ArticuloCodigo",
+        back_populates="articulo",
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
 
     def __repr__(self) -> str:

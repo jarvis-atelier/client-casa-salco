@@ -5,11 +5,11 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.articulo import UnidadMedidaEnum
+from app.schemas.articulo_codigo import ArticuloCodigoOut
 
 
 class ArticuloBase(BaseModel):
     codigo: str = Field(min_length=1, max_length=30)
-    codigo_barras: str | None = Field(default=None, max_length=50)
     descripcion: str = Field(min_length=1, max_length=255)
     descripcion_corta: str | None = Field(default=None, max_length=100)
     familia_id: int | None = None
@@ -27,12 +27,11 @@ class ArticuloBase(BaseModel):
 
 
 class ArticuloCreate(ArticuloBase):
-    pass
+    codigo_principal: str | None = Field(default=None, max_length=50)
 
 
 class ArticuloUpdate(BaseModel):
     codigo: str | None = Field(default=None, min_length=1, max_length=30)
-    codigo_barras: str | None = Field(default=None, max_length=50)
     descripcion: str | None = Field(default=None, min_length=1, max_length=255)
     descripcion_corta: str | None = Field(default=None, max_length=100)
     familia_id: int | None = None
@@ -55,3 +54,4 @@ class ArticuloOut(ArticuloBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    codigos: list[ArticuloCodigoOut] = []

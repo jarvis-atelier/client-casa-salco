@@ -9,6 +9,7 @@ from .alerta import (
     TipoAlertaEnum,
 )
 from .articulo import Articulo, ArticuloProveedor, UnidadMedidaEnum
+from .articulo_codigo import ArticuloCodigo, TipoCodigoArticuloEnum
 from .base import Base, SoftDeleteMixin, TimestampMixin
 from .cae import Cae
 from .calendario_pago import (
@@ -44,6 +45,7 @@ __all__ = [
     "Alerta",
     "Area",
     "Articulo",
+    "ArticuloCodigo",
     "ArticuloProveedor",
     "Base",
     "Cae",
@@ -77,6 +79,7 @@ __all__ = [
     "TarjetaCorporativa",
     "TimestampMixin",
     "TipoAlertaEnum",
+    "TipoCodigoArticuloEnum",
     "TipoComprobanteEnum",
     "TipoComprobanteOcrEnum",
     "TipoCompromisoEnum",
