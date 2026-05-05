@@ -129,6 +129,17 @@ class Report:
     )
     junk_filtered: list = field(default_factory=list)
     errors: list = field(default_factory=list)
+    # ----- B5 (Phase 7) — empaquetados extension fields ------------------
+    #: Counts of `ArticuloCodigo` rows by `tipo` enum value (e.g.
+    #: ``{"principal": 13789, "alterno": 122, "empaquetado": 8771,
+    #: "interno": 0}``). When ``None``, the `## Empaquetados imported`
+    #: section renders as ``(skipped)``.
+    empaquetados_counts_by_tipo: dict | None = None
+    #: Top-N distinct `cantidad_por_pack` values across
+    #: `ArticuloProveedor`, as a list of ``(cantidad, count)`` tuples
+    #: (Decimal-or-numeric and int respectively). When ``None``, the
+    #: `## cantidad_por_pack distribution` section renders as ``(skipped)``.
+    cantidad_por_pack_distribution: list | None = None
 
     # ---- public API ------------------------------------------------------
 
@@ -138,6 +149,10 @@ class Report:
         lines.extend(self._header_lines())
         lines.append("")
         lines.extend(self._counts_lines())
+        lines.append("")
+        lines.extend(self._empaquetados_imported_lines())
+        lines.append("")
+        lines.extend(self._cantidad_distribution_lines())
         lines.append("")
         lines.extend(self._compra_zero_lines())
         lines.append("")
@@ -189,6 +204,63 @@ class Report:
                     f"| {entity} | {r.inserted} | {r.updated} | "
                     f"{r.skipped} | {r.failed} |"
                 )
+        return out
+
+    def _empaquetados_imported_lines(self) -> list[str]:
+        """Render ``## Empaquetados imported`` (B5 — Phase 7).
+
+        When `empaquetados_counts_by_tipo` is ``None`` the section renders
+        with a ``(skipped — provide --empaquetados to import)`` notice and
+        no table, signalling that the EMPAQUETADOS phase was not run.
+        """
+        out = ["## Empaquetados imported"]
+        if self.empaquetados_counts_by_tipo is None:
+            out.append("(skipped — provide --empaquetados to import)")
+            return out
+        out.extend(["", "| Tipo | Count |", "|---|---|"])
+        total = 0
+        # Stable canonical order — matches `TipoCodigoArticuloEnum` declaration.
+        for tipo in ("principal", "alterno", "empaquetado", "interno"):
+            count = int(self.empaquetados_counts_by_tipo.get(tipo, 0) or 0)
+            out.append(f"| {tipo} | {count} |")
+            total += count
+        # Include any extra tipos defined by future enum extensions.
+        for tipo, count in sorted(self.empaquetados_counts_by_tipo.items()):
+            if tipo in ("principal", "alterno", "empaquetado", "interno"):
+                continue
+            count = int(count or 0)
+            out.append(f"| {tipo} | {count} |")
+            total += count
+        out.append(f"| **Total** | {total} |")
+        return out
+
+    def _cantidad_distribution_lines(self) -> list[str]:
+        """Render ``## cantidad_por_pack distribution`` (B5 — Phase 7).
+
+        When `cantidad_por_pack_distribution` is ``None`` the section
+        renders ``(skipped)``. Otherwise emits a top-N table of
+        ``(cantidad_por_pack, articulo_proveedor_count)`` rows truncated
+        to `SECTION_TRUNCATE_AT` per the existing report convention.
+        """
+        out = ["## cantidad_por_pack distribution"]
+        if self.cantidad_por_pack_distribution is None:
+            out.append("(skipped)")
+            return out
+        if not self.cantidad_por_pack_distribution:
+            out.append("(none)")
+            return out
+        rows = [
+            f"| {cantidad} | {int(count)} |"
+            for cantidad, count in self.cantidad_por_pack_distribution
+        ]
+        out.extend(
+            [
+                "",
+                "| cantidad_por_pack | Articulo-Proveedor count |",
+                "|---|---|",
+            ]
+        )
+        out.extend(_truncate(rows, SECTION_TRUNCATE_AT))
         return out
 
     def _compra_zero_lines(self) -> list[str]:

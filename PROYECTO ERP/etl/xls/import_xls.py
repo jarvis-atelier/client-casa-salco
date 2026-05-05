@@ -102,6 +102,16 @@ def setup_logging(verbose: bool = False) -> None:
     help="Ruta al .xls File 1 (sheet 'RELACION PRODUCTOS PROVEEDOR').",
 )
 @click.option(
+    "--empaquetados",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Ruta al .xls File 1 (sheet 'EMPAQUETADOS DE PRODUCTOS'). Opcional — "
+        "si se omite, la fase EMPAQUETADOS se saltea y queda listada en "
+        "'Sheets skipped'."
+    ),
+)
+@click.option(
     "--skip-compra-cero/--no-skip-compra-cero",
     default=False,
     show_default=True,
@@ -143,6 +153,7 @@ def main(
     proveedores: Path,
     articulos: Path,
     articulos_proveedores: Path,
+    empaquetados: Path | None,
     skip_compra_cero: bool,
     dry_run: bool,
     batch_size: int,
@@ -165,8 +176,13 @@ def main(
     report_prov = None
     report_art = None
     report_ap = None
+    report_emp = None  # Phase 7 (B5): empaquetados LoadReport
     legacy_acc: list = []
     compra_zero_acc: list = []
+    # Phase 7 (B5): tipo distribution + cantidad_por_pack distribution.
+    # Populated only when the empaquetados phase actually runs (flag set + not dry-run).
+    empaquetados_counts_by_tipo: dict[str, int] | None = None
+    cantidad_por_pack_distribution: list[tuple] | None = None
 
     click.echo(
         f"[xls-import] start ts={ts} dry_run={dry_run} "
@@ -302,6 +318,81 @@ def main(
     else:
         click.echo("[xls-import]   dry-run — articulos_proveedores phase skipped")
 
+    # Phase: empaquetados (B5 — Phase 7) — OPTIONAL
+    # Only runs if --empaquetados PATH was provided AND not dry_run. Otherwise
+    # echoes a skip line and the Report falls back to listing EMPAQUETADOS in
+    # `## Sheets skipped` (default behavior).
+    click.echo(
+        f"[xls-import] phase=empaquetados file={empaquetados}"
+        if empaquetados is not None
+        else "[xls-import] phase=empaquetados — skipped (no --empaquetados flag)"
+    )
+    if empaquetados is not None and not dry_run:
+        # Imports tardios (deps en BACKEND_ROOT en sys.path + Flask app context).
+        # NOTE: corre DESPUES de articulos_proveedores → la FK a Articulo ya esta
+        # commiteada y `build_fk_caches` la lee fresh.
+        from app import create_app  # noqa: E402
+        from app.extensions import db as _db  # noqa: E402
+
+        from etl.xls.mappers import empaquetados_xls  # noqa: E402
+
+        flask_app = create_app()
+        with flask_app.app_context():
+            session = _db.session
+            try:
+                fk_caches_emp = empaquetados_xls.build_fk_caches(session)
+                rows_emp, _skipped_emp = empaquetados_xls.extract(
+                    empaquetados,
+                    sheet_name="EMPAQUETADOS DE PRODUCTOS",
+                    fk_caches=fk_caches_emp,
+                )
+                report_emp = empaquetados_xls.load(
+                    session, rows_emp, batch_size=batch_size
+                )
+                session.commit()
+                click.echo(
+                    f"[xls-import]   inserted={report_emp.inserted} "
+                    f"updated={report_emp.updated} "
+                    f"skipped={report_emp.skipped} "
+                    f"errors={report_emp.failed}"
+                )
+
+                # Build report-ready distributions (post-commit DB queries).
+                # Counts by tipo: query articulo_codigos grouped by enum value.
+                # Distribution: top-20 cantidad_por_pack values across articulo_proveedores.
+                from app.models.articulo import ArticuloProveedor  # noqa: E402
+                from app.models.articulo_codigo import (  # noqa: E402
+                    ArticuloCodigo,
+                    TipoCodigoArticuloEnum,
+                )
+                from sqlalchemy import func  # noqa: E402
+
+                empaquetados_counts_by_tipo = {
+                    t.value: session.query(ArticuloCodigo)
+                    .filter_by(tipo=t)
+                    .count()
+                    for t in TipoCodigoArticuloEnum
+                }
+                cantidad_por_pack_distribution = (
+                    session.query(
+                        ArticuloProveedor.cantidad_por_pack,
+                        func.count().label("n"),
+                    )
+                    .group_by(ArticuloProveedor.cantidad_por_pack)
+                    .order_by(func.count().desc())
+                    .limit(20)
+                    .all()
+                )
+            except Exception as exc:
+                session.rollback()
+                logger.exception("empaquetados phase failed: %s", exc)
+                sys.exit(EXIT_FAILURE)
+    elif empaquetados is None:
+        # Already echoed the skip line above; nothing else to do.
+        pass
+    else:
+        click.echo("[xls-import]   dry-run — empaquetados phase skipped")
+
     # Phase: report (B6 — Phase 6)
     click.echo("[xls-import] phase=report")
     if not dry_run:
@@ -325,17 +416,26 @@ def main(
 
         # `LoadReport` instances may be None if a phase aborted earlier; we
         # surface them as zero-row entries via the Report's defensive fallback.
-        report = Report(
-            source_proveedores=str(proveedores),
-            source_articulos=str(articulos),
-            source_articulos_proveedores=str(articulos_proveedores),
-            timestamp=run_started_at,
-            duration_seconds=time.monotonic() - run_started_monotonic,
-            exit_status=exit_status,
-            load_reports={k: v for k, v in load_reports.items() if v is not None},
-            legacy_catalog=legacy_acc,
-            compra_zero=compra_zero_acc,
-        )
+        # B5 — Phase 7: when --empaquetados ran successfully, override the
+        # default `sheets_skipped` (which lists EMPAQUETADOS) to empty so the
+        # report no longer reports it as deferred.
+        report_kwargs: dict = {
+            "source_proveedores": str(proveedores),
+            "source_articulos": str(articulos),
+            "source_articulos_proveedores": str(articulos_proveedores),
+            "timestamp": run_started_at,
+            "duration_seconds": time.monotonic() - run_started_monotonic,
+            "exit_status": exit_status,
+            "load_reports": {k: v for k, v in load_reports.items() if v is not None},
+            "legacy_catalog": legacy_acc,
+            "compra_zero": compra_zero_acc,
+            "empaquetados_counts_by_tipo": empaquetados_counts_by_tipo,
+            "cantidad_por_pack_distribution": cantidad_por_pack_distribution,
+        }
+        if empaquetados is not None:
+            # Empaquetados ran (not dry-run path) → drop default skip entry.
+            report_kwargs["sheets_skipped"] = []
+        report = Report(**report_kwargs)
         timestamped_path, last_path = write_report(report, Path(report_out))
         click.echo(f"[xls-import]   report={timestamped_path}")
         click.echo(f"[xls-import]   last={last_path}")
