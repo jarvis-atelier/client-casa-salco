@@ -253,7 +253,41 @@ def main(
 
     # Phase: articulos_proveedores
     click.echo(f"[xls-import] phase=articulos_proveedores file={articulos_proveedores}")
-    # TODO: mapper call (Phase 5)
+    if not dry_run:
+        # Imports tardios (deps en BACKEND_ROOT en sys.path + Flask app context).
+        # NOTE: si la fase de articulos acaba de commitear, los nuevos articulos
+        # ya estan en la DB y `build_fk_caches` los lee fresh.
+        from app import create_app  # noqa: E402
+        from app.extensions import db as _db  # noqa: E402
+
+        from etl.xls.mappers import articulos_proveedores_xls  # noqa: E402
+
+        flask_app = create_app()
+        with flask_app.app_context():
+            session = _db.session
+            try:
+                fk_caches_ap = articulos_proveedores_xls.build_fk_caches(session)
+                rows_ap = articulos_proveedores_xls.extract(
+                    articulos_proveedores,
+                    sheet_name="RELACION PRODUCTOS PROVEEDOR",
+                    fk_caches=fk_caches_ap,
+                )
+                report_ap = articulos_proveedores_xls.load(
+                    session, rows_ap, batch_size=batch_size
+                )
+                session.commit()
+                click.echo(
+                    f"[xls-import]   inserted={report_ap.inserted} "
+                    f"updated={report_ap.updated} "
+                    f"skipped={report_ap.skipped} "
+                    f"errors={report_ap.failed}"
+                )
+            except Exception as exc:
+                session.rollback()
+                logger.exception("articulos_proveedores phase failed: %s", exc)
+                sys.exit(EXIT_FAILURE)
+    else:
+        click.echo("[xls-import]   dry-run — articulos_proveedores phase skipped")
 
     # Report
     click.echo("[xls-import] phase=report")
