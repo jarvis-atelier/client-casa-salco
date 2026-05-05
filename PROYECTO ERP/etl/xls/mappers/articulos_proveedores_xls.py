@@ -28,18 +28,25 @@ Verificado contra `PROYECTO ERP/backend/app/models/articulo.py:98-118`:
 | codigo proveedor                    | proveedor_id (FK -> proveedores.id) | resuelto via cache `proveedor_codigo->id`  |
 | nombre del proveedor                | --                                  | ignored (ya en `Proveedor.razon_social`)    |
 | codigo del producto x el proveedor  | codigo_proveedor (String(50))       | el codigo que el proveedor usa para el item |
-| cantidad                            | --                                  | DROPPED (Decision 6 — deferred a multi-codigo) |
+| cantidad                            | cantidad_por_pack (Numeric(10,3))   | re-read en Change B (xls-empaquetados); invalid/None -> Decimal("1") |
 | (derivado)                          | costo_proveedor (Numeric(14,4))     | default Decimal(0); xls no provee fuente   |
 
 `UniqueConstraint("articulo_id", "proveedor_id", name="uq_artprov_art_prov")`
 -> natural key compuesta para idempotencia.
 
-## Decision 6 — DROP `cantidad`
+## Decision 6 (Change B update) — `cantidad` RE-READ a `cantidad_por_pack`
 
-La columna `cantidad` del xls NO se persiste en este change. El modelo
-`ArticuloProveedor` no tiene campo para guardarla (el unico campo de
-"presentacion" seria parte del change `articulo-multi-codigo-y-presentaciones`
-deferido). Se loguea UNA sola vez al inicio del extract para no spamear.
+En el change original `importacion-xls-legacy` la columna `cantidad` fue
+DROPPED (el modelo no tenia campo destino). En Change B
+(`xls-empaquetados-y-presentaciones`) el modelo `ArticuloProveedor` recibio
+`cantidad_por_pack: Numeric(10,3) NOT NULL DEFAULT 1` (migration
+`f6a7b8c9d0e1`), y este mapper ahora la re-lee:
+
+- Source col: `'cantidad '` (TRAILING SPACE — verificado).
+- Target field: `ArticuloProveedor.cantidad_por_pack`.
+- Conversion: `decimal_or_zero(value, places=3)`; valores `None`/`0`/invalid
+  caen al default semantico `Decimal("1")` (matchea el server_default).
+- Last-wins en los 436 (articulo_id, proveedor_id) duplicates intra-sheet.
 
 ## FK resolution rules
 
@@ -67,10 +74,10 @@ Composite natural key `(articulo_id, proveedor_id)` per
 UniqueConstraint del modelo. Patron mismo que los otros mappers:
 build `existing` dict UNA vez al inicio. Re-correr -> inserted=0.
 
-UPDATE path solo machaca `codigo_proveedor` (nuestro unico campo
-"machacable" del xls — `costo_proveedor` queda en 0 default y no se
-toca para preservar el valor que el DBF importer pueda haber cargado
-desde ARTIPROV.PRCO). Si no hay delta en `codigo_proveedor` -> SKIP.
+UPDATE path machaca `codigo_proveedor` y `cantidad_por_pack` (Change B).
+`costo_proveedor` queda en 0 default y NO se toca para preservar el valor
+que el DBF importer pueda haber cargado desde ARTIPROV.PRCO. Sin deltas
+-> SKIP.
 
 Intra-sheet duplicate `(articulo, proveedor)`: last-wins (consistente con
 los otros mappers).
@@ -84,7 +91,7 @@ from pathlib import Path
 
 from app.models import Articulo, ArticuloProveedor, Proveedor
 
-from etl.mappers.common import LoadReport, clean_str
+from etl.mappers.common import LoadReport, clean_str, decimal_or_zero
 from etl.xls.mappers.common_xls import read_sheet
 
 logger = logging.getLogger("etl.xls.articulos_proveedores")
@@ -100,7 +107,7 @@ COL_CODIGO_ARTICULO = "codigo articulo"
 COL_CODIGO_PROVEEDOR = "codigo proveedor"
 COL_NOMBRE_PROVEEDOR = "nombre del proveedor "  # ignored; trailing space
 COL_CODIGO_ALTERNO = "codigo del producto x el proveedor"
-COL_CANTIDAD = "cantidad "  # DROPPED per Decision 6; trailing space
+COL_CANTIDAD = "cantidad "  # RE-READ in Change B -> cantidad_por_pack; trailing space
 
 
 # Sheet por defecto en el File 1 (h00ugz.xls).
@@ -156,11 +163,13 @@ def extract(
       - NO se insertan filas con FKs en NULL (el unique constraint
         `(articulo_id, proveedor_id)` requiere ambos NOT NULL).
 
-    `cantidad` DROPPED (Decision 6 — deferido a multi-codigo). Se loguea
-    una sola vez al inicio de la sheet.
+    `cantidad` (col `'cantidad '` con trailing space) se RE-LEE en Change B
+    y se persiste en `ArticuloProveedor.cantidad_por_pack` (Numeric(10,3)).
+    Valores `None`/`0`/invalid caen al default `Decimal("1")` (matchea el
+    server_default del modelo).
 
     Yieldea dicts con keys:
-      articulo_id, proveedor_id, codigo_proveedor, _row
+      articulo_id, proveedor_id, codigo_proveedor, cantidad_por_pack, _row
 
     `_row` es el numero de fila excel (1-indexed, header=1) para warnings.
     """
@@ -168,8 +177,7 @@ def extract(
     proveedor_cache: dict[str, int] = fk_caches["proveedor"]
 
     logger.info(
-        "extract sheet=%r articulo_cache_size=%d proveedor_cache_size=%d "
-        "(cantidad column will be DROPPED — deferred to articulo-multi-codigo-y-presentaciones)",
+        "extract sheet=%r articulo_cache_size=%d proveedor_cache_size=%d",
         sheet_name, len(articulo_cache), len(proveedor_cache),
     )
 
@@ -243,12 +251,18 @@ def extract(
         # the FK lookup `codigo_proveedor` which was the proveedor maestro code.
         codigo_alterno = clean_str(row.get(COL_CODIGO_ALTERNO), max_len=50)
 
-        # `cantidad` column intentionally NOT read — Decision 6.
+        # `cantidad` re-read (Change B). Invalid/None/0 -> Decimal("1") matching
+        # the model's server_default.
+        cantidad_raw = row.get(COL_CANTIDAD)
+        cantidad_por_pack = decimal_or_zero(cantidad_raw, places=3)
+        if cantidad_por_pack <= Decimal("0"):
+            cantidad_por_pack = Decimal("1")
 
         yield {
             "articulo_id": articulo_id,
             "proveedor_id": proveedor_id,
             "codigo_proveedor": codigo_alterno,
+            "cantidad_por_pack": cantidad_por_pack,
             "_row": row_idx,
         }
 
@@ -273,12 +287,14 @@ def load(
       - Sin deltas -> SKIP.
       - Flush cada `batch_size` rows (default 1000).
 
-    Update path: solo machaca `codigo_proveedor`. NO toca `costo_proveedor`
-    (el xls no provee fuente — preservar valor cargado por DBF importer
-    desde ARTIPROV.PRCO si lo hubiera) ni `ultimo_ingreso`.
+    Update path: machaca `codigo_proveedor` y `cantidad_por_pack` (Change B,
+    last-wins via Decimal.compare). NO toca `costo_proveedor` (el xls no
+    provee fuente — preservar valor cargado por DBF importer desde
+    ARTIPROV.PRCO si lo hubiera) ni `ultimo_ingreso`.
 
     Insert path: crea `ArticuloProveedor` con `costo_proveedor=Decimal(0)`
-    default, `codigo_proveedor` del xls (puede ser None).
+    default, `codigo_proveedor` del xls (puede ser None), y
+    `cantidad_por_pack` del xls (default `Decimal("1")` si invalid/None).
 
     Skip rows from extract: las filas con `_skip=True` son contabilizadas
     como `failed` con su `_skip_reason` propagado al WarningRecord (mismo
@@ -310,6 +326,7 @@ def load(
         articulo_id = row["articulo_id"]
         proveedor_id = row["proveedor_id"]
         codigo_proveedor_field = row.get("codigo_proveedor")
+        cantidad_por_pack = row.get("cantidad_por_pack", Decimal("1"))
         row_idx = row.get("_row")
         key = (articulo_id, proveedor_id)
         identifier = f"{articulo_id}/{proveedor_id}"
@@ -331,16 +348,28 @@ def load(
                     proveedor_id=proveedor_id,
                     codigo_proveedor=codigo_proveedor_field,
                     costo_proveedor=Decimal("0"),
+                    cantidad_por_pack=cantidad_por_pack,
                 )
                 session.add(ap)
                 existing[key] = ap
                 report.inserted += 1
                 pending_flush += 1
             else:
-                # UPDATE path (idempotente). Solo `codigo_proveedor`.
+                # UPDATE path (idempotente). `codigo_proveedor` y
+                # `cantidad_por_pack` (Change B).
                 changed = False
                 if current.codigo_proveedor != codigo_proveedor_field:
                     current.codigo_proveedor = codigo_proveedor_field
+                    changed = True
+                # Decimal compare via .compare() to avoid drift por representacion
+                # (mirror articulos_xls UPDATE pattern).
+                old_cant = current.cantidad_por_pack
+                if isinstance(old_cant, Decimal) and isinstance(cantidad_por_pack, Decimal):
+                    if old_cant.compare(cantidad_por_pack) != Decimal("0"):
+                        current.cantidad_por_pack = cantidad_por_pack
+                        changed = True
+                elif old_cant != cantidad_por_pack:
+                    current.cantidad_por_pack = cantidad_por_pack
                     changed = True
                 # `costo_proveedor` NO se toca (preserva DBF / valores manuales).
                 if changed:

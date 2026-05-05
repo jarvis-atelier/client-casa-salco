@@ -13,6 +13,7 @@ Output files (committed alongside this script):
 - proveedores.xls               — sheet `proveedor` (5 rows)
 - articulos.xls                 — sheet `Sheet1` (10 rows)
 - articulos_proveedores.xls     — sheet `RELACION PRODUCTOS PROVEEDOR` (5 rows)
+- empaquetados.xls              — sheet `EMPAQUETADOS DE PRODUCTOS` (Change B; 10 rows)
 
 ## Encoding round-trip
 
@@ -186,9 +187,58 @@ ARTPROV_ROWS = [
     # 4) Missing articulo FK (NOEXISTE) -> SKIP + WARN
     ("NOEXISTE", "P001", "Acme SA", "PROV-CODE-4", 1),
 
-    # 5) Row with cantidad=5 — must be DROPPED per Decision 6
-    #    (no field on ArticuloProveedor model). Pair itself is normal.
+    # 5) Row with cantidad=5 — Change B re-reads it into cantidad_por_pack.
+    #    Pair itself is normal.
     ("ART01", "P001", "Acme SA", "PROV-CODE-5", 5),
+]
+
+
+# ---------------------------------------------------------------------------
+# Sheet 4 — empaquetados.xls (Change B: xls-empaquetados-y-presentaciones)
+# ---------------------------------------------------------------------------
+#
+# Real File 1 has the 'EMPAQUETADOS DE PRODUCTOS' sheet (with spaces, no
+# trailing) with 22682 data rows. Headers verified via xlrd in B1 audit
+# (engram observation #561): `Codigo`, `Articulo`, `Cantidad` — NO trailing
+# spaces.
+#
+# Fixture rows are hand-crafted to exercise the heuristic + extract paths:
+#   - single-row groups (cantidad=1 -> principal; cantidad=6 -> principal forced)
+#   - multi-row groups with a unit + extras (principal/empaquetado/alterno)
+#   - multi-row groups with NO unit (first forced principal)
+#   - junk codigo '0000' filter
+#   - FK miss (codigo articulo not in DB)
+EMPAQUETADOS_HEADERS = [
+    "Codigo",
+    "Articulo",
+    "Cantidad",
+]
+
+# (codigo, codigo_articulo, cantidad)
+# Articulos referenced (from ARTICULOS_ROWS): ART01, ART02, ART05, ART06,
+# ART07, ART09, ART10. Pair ART09 has multiple rows for heuristic coverage.
+EMPAQUETADOS_ROWS = [
+    # 1) ART01: single row cantidad=1 -> principal (S3).
+    ("EAN-001-PRINC", "ART01", 1),
+
+    # 2) ART02: single row cantidad=6 -> principal forced (S6 single-row).
+    ("EAN-002-PACK", "ART02", 6),
+
+    # 3-6) ART09: 4 rows [1, 1, 6, 12] -> principal, alterno, empaquetado, empaquetado (S5).
+    ("EAN-009-A", "ART09", 1),
+    ("EAN-009-B", "ART09", 1),
+    ("EAN-009-C", "ART09", 6),
+    ("EAN-009-D", "ART09", 12),
+
+    # 7-8) ART10: 2 rows [6, 12] -> principal forced, empaquetado (S6 no-unit).
+    ("EAN-010-A", "ART10", 6),
+    ("EAN-010-B", "ART10", 12),
+
+    # 9) Junk: codigo '0000' -> SKIP.
+    ("0000", "ART05", 1),
+
+    # 10) FK miss: codigo articulo "NOEXISTE" -> SKIP + WARN.
+    ("EAN-NOPE", "NOEXISTE", 1),
 ]
 
 
@@ -232,21 +282,35 @@ def build_articulos_proveedores(out_path: Path) -> None:
     book.save(str(out_path))
 
 
+def build_empaquetados(out_path: Path) -> None:
+    book = xlwt.Workbook(encoding="cp1252")
+    _write_sheet(
+        book,
+        "EMPAQUETADOS DE PRODUCTOS",
+        EMPAQUETADOS_HEADERS,
+        EMPAQUETADOS_ROWS,
+    )
+    book.save(str(out_path))
+
+
 def build_all(out_dir: Path = FIXTURES_DIR) -> dict:
-    """Build all 3 fixtures and return their paths.
+    """Build all 4 fixtures and return their paths.
 
     Returns a dict for use by tests/CI:
-        {"proveedores": Path, "articulos": Path, "articulos_proveedores": Path}
+        {"proveedores": Path, "articulos": Path,
+         "articulos_proveedores": Path, "empaquetados": Path}
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = {
         "proveedores": out_dir / "proveedores.xls",
         "articulos": out_dir / "articulos.xls",
         "articulos_proveedores": out_dir / "articulos_proveedores.xls",
+        "empaquetados": out_dir / "empaquetados.xls",
     }
     build_proveedores(paths["proveedores"])
     build_articulos(paths["articulos"])
     build_articulos_proveedores(paths["articulos_proveedores"])
+    build_empaquetados(paths["empaquetados"])
     return paths
 
 

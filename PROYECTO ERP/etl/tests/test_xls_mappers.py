@@ -28,8 +28,11 @@ from app.models import Articulo, ArticuloProveedor, Familia, Proveedor, Rubro
 from app.models.articulo import UnidadMedidaEnum
 from app.seeds.big import _seed_taxonomia
 
+from app.models.articulo_codigo import ArticuloCodigo, TipoCodigoArticuloEnum
+
 from etl.xls.mappers import articulos_proveedores_xls as m_artprov_xls
 from etl.xls.mappers import articulos_xls as m_articulos_xls
+from etl.xls.mappers import empaquetados_xls as m_empaquetados_xls
 from etl.xls.mappers import proveedores_xls as m_proveedores_xls
 from etl.xls.mappers.common_xls import decode_xls_str
 from etl.xls.report import Report
@@ -39,11 +42,12 @@ FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "xls_synthetic"
 PROVEEDORES_XLS = FIXTURES_DIR / "proveedores.xls"
 ARTICULOS_XLS = FIXTURES_DIR / "articulos.xls"
 ARTPROV_XLS = FIXTURES_DIR / "articulos_proveedores.xls"
+EMPAQUETADOS_XLS = FIXTURES_DIR / "empaquetados.xls"
 
 
 @pytest.fixture
 def fixtures_present():
-    for p in (PROVEEDORES_XLS, ARTICULOS_XLS, ARTPROV_XLS):
+    for p in (PROVEEDORES_XLS, ARTICULOS_XLS, ARTPROV_XLS, EMPAQUETADOS_XLS):
         assert p.exists(), (
             f"Missing fixture {p}. Regenerate with: "
             "python etl/tests/fixtures/xls_synthetic/build.py"
@@ -52,6 +56,7 @@ def fixtures_present():
         "proveedores": PROVEEDORES_XLS,
         "articulos": ARTICULOS_XLS,
         "articulos_proveedores": ARTPROV_XLS,
+        "empaquetados": EMPAQUETADOS_XLS,
     }
 
 
@@ -377,19 +382,18 @@ class TestImportArticulosProveedoresHappy:
         #   2 normal pairs (ART09/P001, ART10/P003)
         #   1 missing proveedor FK (ART09/XX999) -> SKIP+WARN -> failed
         #   1 missing articulo FK (NOEXISTE/P001) -> SKIP+WARN -> failed
-        #   1 with cantidad=5 (ART01/P001) -> normal pair (cantidad dropped)
+        #   1 with cantidad=5 (ART01/P001) -> normal pair, persisted to cantidad_por_pack.
         # = 3 inserted, 2 failed.
         assert report.inserted == 3
         assert report.failed == 2
-        # cantidad column NOT persisted: model has no field; verify by
-        # inspecting an actual row -- only codigo_proveedor / costo_proveedor
-        # exist on ArticuloProveedor.
+        # Verify model fields and Change B re-read of cantidad -> cantidad_por_pack.
         ap_rows_db = session.query(ArticuloProveedor).all()
         assert len(ap_rows_db) == 3
         for ap in ap_rows_db:
-            # Just verify these fields exist; cantidad does not.
             assert hasattr(ap, "codigo_proveedor")
             assert hasattr(ap, "costo_proveedor")
+            assert hasattr(ap, "cantidad_por_pack")
+            # No bare `cantidad` field — only `cantidad_por_pack`.
             assert not hasattr(ap, "cantidad")
 
 
@@ -645,3 +649,255 @@ class TestIntraSheetDuplicateLastWins:
         # A WARN was logged about the duplicate.
         warn_reasons = " ".join(w.reason for w in report.warnings)
         assert "intra-sheet duplicate" in warn_reasons
+
+
+# ===========================================================================
+# Change B (xls-empaquetados-y-presentaciones) — Phase 5+6 (B4)
+# ===========================================================================
+#
+# Coverage:
+#   - S2  EMPAQUETADOS happy path end-to-end (build_fk_caches + extract + load).
+#   - S7  RELACION cantidad re-read into cantidad_por_pack.
+#   - S8  EMPAQUETADOS load idempotency (re-run -> 0 inserts).
+#   - S9  EMPAQUETADOS FK miss -> SKIP + WARN, no abort.
+#   - S10 EMPAQUETADOS junk filter (codigo='0000') -> SKIP.
+#   - tipo heuristic application via assign_tipos pipeline.
+#   - articulos_proveedores idempotency post-cantidad-re-read.
+
+
+def _seed_articulos_for_empaquetados(session, fixtures_present):
+    """Helper: pre-seed proveedores + articulos so empaquetados FK resolves."""
+    prov_rows = list(
+        m_proveedores_xls.extract(
+            fixtures_present["proveedores"], sheet_name="proveedor"
+        )
+    )
+    m_proveedores_xls.load(session, prov_rows)
+    session.commit()
+
+    fk_art = m_articulos_xls.build_fk_caches(session)
+    art_rows, _l, _c = m_articulos_xls.extract(
+        fixtures_present["articulos"], sheet_name="Sheet1", fk_caches=fk_art
+    )
+    m_articulos_xls.load(session, art_rows)
+    session.commit()
+
+
+class TestEmpaquetadosExtractHappyPath:
+    """S2 + S9 + S10 — extract handles FK miss + junk + tipo assignment."""
+
+    def test_extract_returns_rows_with_tipo_skipped_for_junk_and_fk_miss(
+        self, session, seeded_taxonomia, fixtures_present
+    ):
+        _seed_articulos_for_empaquetados(session, fixtures_present)
+
+        fk = m_empaquetados_xls.build_fk_caches(session)
+        rows, skipped = m_empaquetados_xls.extract(
+            fixtures_present["empaquetados"],
+            sheet_name="EMPAQUETADOS DE PRODUCTOS",
+            fk_caches=fk,
+        )
+
+        # Fixture has 10 rows:
+        #   1 ART01 (cant=1), 1 ART02 (cant=6),
+        #   4 ART09 ([1,1,6,12]), 2 ART10 ([6,12]),
+        #   1 junk codigo='0000' (FILTERED),
+        #   1 FK miss "NOEXISTE" (SKIPPED+WARN).
+        # Valid rows = 8, skipped = 2.
+        assert len(rows) == 8
+        assert len(skipped) == 2
+
+        # Verify skip reasons (S9 FK miss + S10 junk).
+        reasons = " ".join(s["reason"] for s in skipped)
+        assert "FK miss" in reasons or "not found" in reasons or "skipped" in reasons
+        assert "junk" in reasons or "0000" in reasons
+
+        # Verify tipo assignment via heuristic (S3-S6).
+        by_codigo = {r["codigo"]: r for r in rows}
+        # ART01 single cant=1 -> principal.
+        assert by_codigo["EAN-001-PRINC"]["tipo"] == TipoCodigoArticuloEnum.principal
+        # ART02 single cant=6 -> first row forced principal (no unit in group).
+        assert by_codigo["EAN-002-PACK"]["tipo"] == TipoCodigoArticuloEnum.principal
+        # ART09 [1,1,6,12] -> EAN-009-A=principal, EAN-009-B=alterno,
+        #                      EAN-009-C/D=empaquetado.
+        assert by_codigo["EAN-009-A"]["tipo"] == TipoCodigoArticuloEnum.principal
+        assert by_codigo["EAN-009-B"]["tipo"] == TipoCodigoArticuloEnum.alterno
+        assert by_codigo["EAN-009-C"]["tipo"] == TipoCodigoArticuloEnum.empaquetado
+        assert by_codigo["EAN-009-D"]["tipo"] == TipoCodigoArticuloEnum.empaquetado
+        # ART10 [6,12] -> first forced principal, second empaquetado.
+        assert by_codigo["EAN-010-A"]["tipo"] == TipoCodigoArticuloEnum.principal
+        assert by_codigo["EAN-010-B"]["tipo"] == TipoCodigoArticuloEnum.empaquetado
+
+
+class TestEmpaquetadosLoadIdempotent:
+    """S8 — second run produces 0 inserts; idempotent UPDATE branch verified."""
+
+    def _run_full(self, session, fixtures_present):
+        fk = m_empaquetados_xls.build_fk_caches(session)
+        rows, _skipped = m_empaquetados_xls.extract(
+            fixtures_present["empaquetados"],
+            sheet_name="EMPAQUETADOS DE PRODUCTOS",
+            fk_caches=fk,
+        )
+        report = m_empaquetados_xls.load(session, rows)
+        session.commit()
+        return report
+
+    def test_second_run_inserts_zero(
+        self, session, seeded_taxonomia, fixtures_present
+    ):
+        _seed_articulos_for_empaquetados(session, fixtures_present)
+
+        # Run 1: 8 inserts (matching valid rows from extract).
+        rep1 = self._run_full(session, fixtures_present)
+        assert rep1.inserted == 8
+        count_after_1 = session.query(ArticuloCodigo).count()
+        assert count_after_1 == 8
+
+        # Run 2: idempotent — 0 inserts, 0 updates (tipo unchanged), all skipped.
+        rep2 = self._run_full(session, fixtures_present)
+        assert rep2.inserted == 0
+        assert rep2.updated == 0
+        assert rep2.skipped == 8
+        count_after_2 = session.query(ArticuloCodigo).count()
+        assert count_after_2 == count_after_1
+
+    def test_update_branch_refreshes_tipo_when_different(
+        self, session, seeded_taxonomia, fixtures_present
+    ):
+        """Pre-existing ArticuloCodigo row with mismatched tipo -> UPDATE."""
+        _seed_articulos_for_empaquetados(session, fixtures_present)
+
+        # Pre-create an ArticuloCodigo for ART01/EAN-001-PRINC with tipo=alterno
+        # (mimics Change A backfill that may have classified differently).
+        art01 = session.query(Articulo).filter_by(codigo="ART01").one()
+        existing_ac = ArticuloCodigo(
+            articulo_id=art01.id,
+            codigo="EAN-001-PRINC",
+            tipo=TipoCodigoArticuloEnum.alterno,
+        )
+        session.add(existing_ac)
+        session.commit()
+
+        # Run empaquetados import. Heuristic says EAN-001-PRINC -> principal,
+        # so the UPDATE branch should fire.
+        report = self._run_full(session, fixtures_present)
+
+        # Verify the UPDATE happened.
+        assert report.updated >= 1
+        refreshed = session.query(ArticuloCodigo).filter_by(
+            articulo_id=art01.id, codigo="EAN-001-PRINC"
+        ).one()
+        assert refreshed.tipo == TipoCodigoArticuloEnum.principal
+
+
+class TestArticulosProveedoresCantidadReRead:
+    """S7 + S11 — cantidad column re-read into cantidad_por_pack."""
+
+    def test_cantidad_persisted_to_cantidad_por_pack(
+        self, session, seeded_taxonomia, fixtures_present
+    ):
+        # Run all 3 phases: proveedores -> articulos -> articulos_proveedores.
+        _seed_articulos_for_empaquetados(session, fixtures_present)
+
+        fk_ap = m_artprov_xls.build_fk_caches(session)
+        ap_rows = list(
+            m_artprov_xls.extract(
+                fixtures_present["articulos_proveedores"],
+                sheet_name="RELACION PRODUCTOS PROVEEDOR",
+                fk_caches=fk_ap,
+            )
+        )
+        m_artprov_xls.load(session, ap_rows)
+        session.commit()
+
+        # Fixture row 5: ART01 + P001 had cantidad=5 in xls.
+        # That maps to ArticuloProveedor.cantidad_por_pack = Decimal("5").
+        art01 = session.query(Articulo).filter_by(codigo="ART01").one()
+        prov_p001 = session.query(Proveedor).filter_by(codigo="P001").one()
+        ap = (
+            session.query(ArticuloProveedor)
+            .filter_by(articulo_id=art01.id, proveedor_id=prov_p001.id)
+            .one()
+        )
+        assert ap.cantidad_por_pack == Decimal("5")
+
+        # Other pairs had cantidad=1 -> Decimal("1").
+        art09 = session.query(Articulo).filter_by(codigo="ART09").one()
+        ap09 = (
+            session.query(ArticuloProveedor)
+            .filter_by(articulo_id=art09.id, proveedor_id=prov_p001.id)
+            .one()
+        )
+        assert ap09.cantidad_por_pack == Decimal("1")
+
+    def test_idempotent_when_cantidad_unchanged(
+        self, session, seeded_taxonomia, fixtures_present
+    ):
+        _seed_articulos_for_empaquetados(session, fixtures_present)
+
+        fk_ap = m_artprov_xls.build_fk_caches(session)
+        rows1 = list(
+            m_artprov_xls.extract(
+                fixtures_present["articulos_proveedores"],
+                sheet_name="RELACION PRODUCTOS PROVEEDOR",
+                fk_caches=fk_ap,
+            )
+        )
+        rep1 = m_artprov_xls.load(session, rows1)
+        session.commit()
+        assert rep1.inserted == 3
+
+        # Second run: extract + load, same input -> 0 inserts, 0 updates.
+        rows2 = list(
+            m_artprov_xls.extract(
+                fixtures_present["articulos_proveedores"],
+                sheet_name="RELACION PRODUCTOS PROVEEDOR",
+                fk_caches=fk_ap,
+            )
+        )
+        rep2 = m_artprov_xls.load(session, rows2)
+        session.commit()
+        assert rep2.inserted == 0
+        assert rep2.updated == 0
+        assert rep2.skipped == 3
+
+    def test_update_path_refreshes_cantidad_when_different(
+        self, session, seeded_taxonomia, fixtures_present
+    ):
+        """Pre-existing ArticuloProveedor with cantidad_por_pack=1 -> UPDATE to 5."""
+        _seed_articulos_for_empaquetados(session, fixtures_present)
+
+        # Pre-create the ART01/P001 pair with cantidad_por_pack=Decimal("1").
+        art01 = session.query(Articulo).filter_by(codigo="ART01").one()
+        prov_p001 = session.query(Proveedor).filter_by(codigo="P001").one()
+        existing_ap = ArticuloProveedor(
+            articulo_id=art01.id,
+            proveedor_id=prov_p001.id,
+            codigo_proveedor="PROV-CODE-5",
+            costo_proveedor=Decimal("0"),
+            cantidad_por_pack=Decimal("1"),
+        )
+        session.add(existing_ap)
+        session.commit()
+
+        # Now run the importer. xls says cantidad=5 for ART01/P001.
+        fk_ap = m_artprov_xls.build_fk_caches(session)
+        ap_rows = list(
+            m_artprov_xls.extract(
+                fixtures_present["articulos_proveedores"],
+                sheet_name="RELACION PRODUCTOS PROVEEDOR",
+                fk_caches=fk_ap,
+            )
+        )
+        report = m_artprov_xls.load(session, ap_rows)
+        session.commit()
+
+        # The UPDATE branch must have fired for the cantidad delta.
+        assert report.updated >= 1
+        refreshed = (
+            session.query(ArticuloProveedor)
+            .filter_by(articulo_id=art01.id, proveedor_id=prov_p001.id)
+            .one()
+        )
+        assert refreshed.cantidad_por_pack == Decimal("5")
