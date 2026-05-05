@@ -21,6 +21,7 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import click
@@ -154,6 +155,18 @@ def main(
 
     resolved_db_url = db_url or os.environ.get("DATABASE_URL")
     ts = time.strftime("%Y-%m-%dT%H:%M:%S")
+    # Capture monotonic start + UTC ISO timestamp for the report header.
+    # `run_started_monotonic` is for accurate duration math; `run_started_at`
+    # is the human-readable ISO string consumed by the report.
+    run_started_monotonic = time.monotonic()
+    run_started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Accumulators consumed by the Phase 6 Report writer.
+    report_prov = None
+    report_art = None
+    report_ap = None
+    legacy_acc: list = []
+    compra_zero_acc: list = []
 
     click.echo(
         f"[xls-import] start ts={ts} dry_run={dry_run} "
@@ -233,9 +246,9 @@ def main(
                     session, rows_art, batch_size=batch_size
                 )
                 session.commit()
-                # `legacy_catalog` y `compra_zero` quedan disponibles para B6
-                # (Report writer). Por ahora los logueamos como counts y los
-                # surface-amos via stdout. B6 los persistira al markdown.
+                # Surface to outer-scope accumulators consumed by B6 Report.
+                legacy_acc = legacy_catalog
+                compra_zero_acc = compra_zero
                 click.echo(
                     f"[xls-import]   inserted={report_art.inserted} "
                     f"updated={report_art.updated} "
@@ -289,11 +302,53 @@ def main(
     else:
         click.echo("[xls-import]   dry-run — articulos_proveedores phase skipped")
 
-    # Report
+    # Phase: report (B6 — Phase 6)
     click.echo("[xls-import] phase=report")
-    # TODO: report writer (Phase 6)
+    if not dry_run:
+        from etl.xls.report import Report, write_report  # noqa: E402
 
-    sys.exit(EXIT_OK)
+        # Determine exit status from collected counts.
+        # `success` = todos los reports presentes y failed=0 en cada uno.
+        # `partial` = hay failed>0 en alguno (rows skipped por FK miss, etc.)
+        # `failure` = uno de los reports nunca se construyo (fase abortada).
+        load_reports = {
+            "Proveedor": report_prov,
+            "Articulo": report_art,
+            "ArticuloProveedor": report_ap,
+        }
+        if any(r is None for r in load_reports.values()):
+            exit_status = "failure"
+        elif any(r.failed > 0 for r in load_reports.values()):
+            exit_status = "partial"
+        else:
+            exit_status = "success"
+
+        # `LoadReport` instances may be None if a phase aborted earlier; we
+        # surface them as zero-row entries via the Report's defensive fallback.
+        report = Report(
+            source_proveedores=str(proveedores),
+            source_articulos=str(articulos),
+            source_articulos_proveedores=str(articulos_proveedores),
+            timestamp=run_started_at,
+            duration_seconds=time.monotonic() - run_started_monotonic,
+            exit_status=exit_status,
+            load_reports={k: v for k, v in load_reports.items() if v is not None},
+            legacy_catalog=legacy_acc,
+            compra_zero=compra_zero_acc,
+        )
+        timestamped_path, last_path = write_report(report, Path(report_out))
+        click.echo(f"[xls-import]   report={timestamped_path}")
+        click.echo(f"[xls-import]   last={last_path}")
+
+        # Map exit_status -> CLI exit code.
+        if exit_status == "failure":
+            sys.exit(EXIT_FAILURE)
+        if exit_status == "partial":
+            sys.exit(EXIT_PARTIAL)
+        sys.exit(EXIT_OK)
+    else:
+        click.echo("[xls-import]   dry-run — report phase skipped")
+        sys.exit(EXIT_OK)
 
 
 if __name__ == "__main__":
