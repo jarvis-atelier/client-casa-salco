@@ -901,3 +901,337 @@ class TestArticulosProveedoresCantidadReRead:
             .one()
         )
         assert refreshed.cantidad_por_pack == Decimal("5")
+
+
+# ===========================================================================
+# Change B (xls-empaquetados-y-presentaciones) — Phase 8 (B6)
+# Full pipeline integration tests
+# ===========================================================================
+#
+# Coverage:
+#   - test_full_pipeline_with_empaquetados — all 4 phases, count assertions.
+#   - test_full_pipeline_idempotent — second run produces no net inserts.
+#   - test_pipeline_without_empaquetados_flag — default behavior preserved
+#     (no ArticuloCodigo from EMPAQUETADOS, sheets_skipped retains entry).
+#   - test_report_full_sections — markdown has all sections incl. B5 additions.
+#   - test_pipeline_cantidad_por_pack_persisted — cantidad_por_pack non-null.
+
+
+def _run_full_pipeline_with_empaquetados(session, fixtures_present):
+    """Run all 4 phases sequentially: proveedores -> articulos ->
+    articulos_proveedores -> empaquetados.
+
+    Returns a dict with per-phase LoadReports plus side-data captured by
+    `articulos_xls.extract` (legacy_catalog, compra_zero) for use in report
+    construction tests.
+    """
+    prov_rows = list(
+        m_proveedores_xls.extract(
+            fixtures_present["proveedores"], sheet_name="proveedor"
+        )
+    )
+    rep_p = m_proveedores_xls.load(session, prov_rows)
+    session.commit()
+
+    fk_art = m_articulos_xls.build_fk_caches(session)
+    art_rows, legacy_catalog, compra_zero = m_articulos_xls.extract(
+        fixtures_present["articulos"], sheet_name="Sheet1", fk_caches=fk_art
+    )
+    rep_a = m_articulos_xls.load(session, art_rows)
+    session.commit()
+
+    fk_ap = m_artprov_xls.build_fk_caches(session)
+    ap_rows = list(
+        m_artprov_xls.extract(
+            fixtures_present["articulos_proveedores"],
+            sheet_name="RELACION PRODUCTOS PROVEEDOR",
+            fk_caches=fk_ap,
+        )
+    )
+    rep_ap = m_artprov_xls.load(session, ap_rows)
+    session.commit()
+
+    fk_emp = m_empaquetados_xls.build_fk_caches(session)
+    emp_rows, _skipped = m_empaquetados_xls.extract(
+        fixtures_present["empaquetados"],
+        sheet_name="EMPAQUETADOS DE PRODUCTOS",
+        fk_caches=fk_emp,
+    )
+    rep_e = m_empaquetados_xls.load(session, emp_rows)
+    session.commit()
+
+    return {
+        "Proveedor": rep_p,
+        "Articulo": rep_a,
+        "ArticuloProveedor": rep_ap,
+        "ArticuloCodigo": rep_e,
+        "legacy_catalog": legacy_catalog,
+        "compra_zero": compra_zero,
+    }
+
+
+def _run_pipeline_without_empaquetados(session, fixtures_present):
+    """Run the legacy 3-phase pipeline (no empaquetados, mirrors --empaquetados
+    flag absent in the CLI)."""
+    prov_rows = list(
+        m_proveedores_xls.extract(
+            fixtures_present["proveedores"], sheet_name="proveedor"
+        )
+    )
+    rep_p = m_proveedores_xls.load(session, prov_rows)
+    session.commit()
+
+    fk_art = m_articulos_xls.build_fk_caches(session)
+    art_rows, legacy_catalog, compra_zero = m_articulos_xls.extract(
+        fixtures_present["articulos"], sheet_name="Sheet1", fk_caches=fk_art
+    )
+    rep_a = m_articulos_xls.load(session, art_rows)
+    session.commit()
+
+    fk_ap = m_artprov_xls.build_fk_caches(session)
+    ap_rows = list(
+        m_artprov_xls.extract(
+            fixtures_present["articulos_proveedores"],
+            sheet_name="RELACION PRODUCTOS PROVEEDOR",
+            fk_caches=fk_ap,
+        )
+    )
+    rep_ap = m_artprov_xls.load(session, ap_rows)
+    session.commit()
+
+    return {
+        "Proveedor": rep_p,
+        "Articulo": rep_a,
+        "ArticuloProveedor": rep_ap,
+        "legacy_catalog": legacy_catalog,
+        "compra_zero": compra_zero,
+    }
+
+
+class TestFullPipelineB6:
+    """B6 — full pipeline (4 phases) integration coverage."""
+
+    def test_full_pipeline_with_empaquetados(
+        self, session, seeded_taxonomia, fixtures_present
+    ):
+        """All 4 phases run; row counts and FK linkage match fixture spec."""
+        result = _run_full_pipeline_with_empaquetados(session, fixtures_present)
+
+        # Per-phase insert counts (B4 baseline).
+        assert result["Proveedor"].inserted == 3
+        assert result["Articulo"].inserted == 8
+        assert result["ArticuloProveedor"].inserted == 3
+        assert result["ArticuloCodigo"].inserted == 8
+
+        # DB-level row counts.
+        assert session.query(Proveedor).count() == 3
+        assert session.query(Articulo).count() == 8
+        assert session.query(ArticuloProveedor).count() == 3
+        # ArticuloCodigo populated EXCLUSIVELY by the EMPAQUETADOS phase
+        # (the articulos create flow does NOT auto-create principal codes
+        # when --empaquetados is absent — see Decision in B5; with the
+        # phase running we get 8 rows: 1 ART01 + 1 ART02 + 4 ART09 + 2 ART10).
+        assert session.query(ArticuloCodigo).count() == 8
+
+        # ArticuloProveedor.cantidad_por_pack populated by RELACION re-read:
+        # ART01/P001 fixture has cantidad=5 -> Decimal("5").
+        art01 = session.query(Articulo).filter_by(codigo="ART01").one()
+        prov_p001 = session.query(Proveedor).filter_by(codigo="P001").one()
+        ap = (
+            session.query(ArticuloProveedor)
+            .filter_by(articulo_id=art01.id, proveedor_id=prov_p001.id)
+            .one()
+        )
+        assert ap.cantidad_por_pack == Decimal("5")
+
+    def test_full_pipeline_idempotent(
+        self, session, seeded_taxonomia, fixtures_present
+    ):
+        """Run pipeline twice; second run inserts 0, DB row counts unchanged."""
+        # First run.
+        result1 = _run_full_pipeline_with_empaquetados(session, fixtures_present)
+        assert result1["Proveedor"].inserted == 3
+        assert result1["Articulo"].inserted == 8
+        assert result1["ArticuloProveedor"].inserted == 3
+        assert result1["ArticuloCodigo"].inserted == 8
+
+        snap_p = session.query(Proveedor).count()
+        snap_a = session.query(Articulo).count()
+        snap_ap = session.query(ArticuloProveedor).count()
+        snap_ac = session.query(ArticuloCodigo).count()
+
+        # Second run.
+        result2 = _run_full_pipeline_with_empaquetados(session, fixtures_present)
+
+        # All inserts must be zero (everything skipped/updated).
+        assert result2["Proveedor"].inserted == 0
+        assert result2["Articulo"].inserted == 0
+        assert result2["ArticuloProveedor"].inserted == 0
+        assert result2["ArticuloCodigo"].inserted == 0
+
+        # Updated may be 0 (true no-op) — values are stable.
+        assert result2["ArticuloProveedor"].updated == 0
+        assert result2["ArticuloCodigo"].updated == 0
+
+        # DB row counts unchanged.
+        assert session.query(Proveedor).count() == snap_p
+        assert session.query(Articulo).count() == snap_a
+        assert session.query(ArticuloProveedor).count() == snap_ap
+        assert session.query(ArticuloCodigo).count() == snap_ac
+
+    def test_pipeline_without_empaquetados_flag(
+        self, session, seeded_taxonomia, fixtures_present
+    ):
+        """Without --empaquetados: ArticuloCodigo empty, default deferral row
+        survives in the report's `## Sheets skipped` section."""
+        result = _run_pipeline_without_empaquetados(session, fixtures_present)
+
+        # No ArticuloCodigo rows at all (the create flow does NOT auto-create
+        # principals — empaquetados phase is the sole producer).
+        assert session.query(ArticuloCodigo).count() == 0
+
+        # Build a Report WITHOUT overriding sheets_skipped (mirrors CLI behavior
+        # when --empaquetados flag absent → default value applies).
+        report = Report(
+            source_proveedores=str(fixtures_present["proveedores"]),
+            source_articulos=str(fixtures_present["articulos"]),
+            source_articulos_proveedores=str(fixtures_present["articulos_proveedores"]),
+            timestamp="2026-05-04T23:59:59Z",
+            duration_seconds=1.0,
+            exit_status="success",
+            load_reports={
+                "Proveedor": result["Proveedor"],
+                "Articulo": result["Articulo"],
+                "ArticuloProveedor": result["ArticuloProveedor"],
+            },
+            legacy_catalog=result["legacy_catalog"],
+            compra_zero=result["compra_zero"],
+            # Note: empaquetados_counts_by_tipo / cantidad_por_pack_distribution
+            # left as None → both render `(skipped)`.
+        )
+        md = report.to_markdown()
+        assert "## Sheets skipped" in md
+        # S12 mandates the deferred-sheet bullet text exactly.
+        assert (
+            "EMPAQUETADOS DE PRODUCTOS — pending multi-codigo model (next change)"
+            in md
+        )
+        # B5 sections exist but render as skipped.
+        assert "## Empaquetados imported" in md
+        assert "(skipped — provide --empaquetados to import)" in md
+        assert "## cantidad_por_pack distribution" in md
+
+    def test_report_full_sections(
+        self, session, seeded_taxonomia, fixtures_present
+    ):
+        """After a full run with --empaquetados-equivalent: markdown contains
+        ALL required sections including the B5 additions populated with data.
+        """
+        result = _run_full_pipeline_with_empaquetados(session, fixtures_present)
+
+        # Build distributions exactly as the CLI does post-empaquetados commit.
+        from sqlalchemy import func
+
+        empaquetados_counts_by_tipo = {
+            t.value: session.query(ArticuloCodigo)
+            .filter_by(tipo=t)
+            .count()
+            for t in TipoCodigoArticuloEnum
+        }
+        cantidad_por_pack_distribution = (
+            session.query(
+                ArticuloProveedor.cantidad_por_pack, func.count()
+            )
+            .group_by(ArticuloProveedor.cantidad_por_pack)
+            .order_by(func.count().desc())
+            .limit(20)
+            .all()
+        )
+
+        report = Report(
+            source_proveedores=str(fixtures_present["proveedores"]),
+            source_articulos=str(fixtures_present["articulos"]),
+            source_articulos_proveedores=str(fixtures_present["articulos_proveedores"]),
+            timestamp="2026-05-04T23:59:59Z",
+            duration_seconds=2.34,
+            exit_status="success",
+            load_reports={
+                "Proveedor": result["Proveedor"],
+                "Articulo": result["Articulo"],
+                "ArticuloProveedor": result["ArticuloProveedor"],
+            },
+            legacy_catalog=result["legacy_catalog"],
+            compra_zero=result["compra_zero"],
+            sheets_skipped=[],  # --empaquetados ran → drop deferral entry.
+            empaquetados_counts_by_tipo=empaquetados_counts_by_tipo,
+            cantidad_por_pack_distribution=cantidad_por_pack_distribution,
+        )
+        md = report.to_markdown()
+
+        # All S12 sections + B5 additions present.
+        for needle in (
+            "# XLS Import Report",
+            "## Counts",
+            "## Empaquetados imported",
+            "## cantidad_por_pack distribution",
+            "## Articulos con compra=0",
+            "## FK no resueltos",
+            "## Raw catalog values preserved",
+            "## Distinct catalog values seen",
+            "## Sheets skipped",
+            "## Junk filtered",
+            "## Errors",
+        ):
+            assert needle in md, f"missing section: {needle!r}\n---\n{md}"
+
+        # B5 sections must NOT be in `(skipped)` state — data populated.
+        assert "(skipped — provide --empaquetados to import)" not in md
+        # `## Empaquetados imported` shows the canonical 4-row table + Total.
+        assert "| principal |" in md
+        assert "| alterno |" in md
+        assert "| empaquetado |" in md
+        assert "| interno |" in md
+        assert "| **Total** |" in md
+        # `## cantidad_por_pack distribution` shows its header (data present
+        # because we have ArticuloProveedor rows with cantidad_por_pack).
+        assert "| cantidad_por_pack | Articulo-Proveedor count |" in md
+
+        # Sheets skipped = [] → renders `(none)`.
+        section = md.split("## Sheets skipped", 1)[1]
+        first_body_line = next(
+            line for line in section.splitlines()[1:] if line.strip()
+        )
+        assert first_body_line == "(none)"
+
+    def test_pipeline_cantidad_por_pack_persisted(
+        self, session, seeded_taxonomia, fixtures_present
+    ):
+        """All ArticuloProveedor rows have non-null cantidad_por_pack matching
+        fixture data (Decimal). Mirrors S7 spec assertion at pipeline level."""
+        _run_full_pipeline_with_empaquetados(session, fixtures_present)
+
+        rows = session.query(ArticuloProveedor).all()
+        # Fixture: 3 valid pairs (ART09/P001, ART10/P003, ART01/P001).
+        assert len(rows) == 3
+        for ap in rows:
+            assert ap.cantidad_por_pack is not None
+            assert isinstance(ap.cantidad_por_pack, Decimal)
+
+        # Specific fixture values: ART01/P001 cantidad=5; ART09 and ART10 both
+        # default to cantidad=1 in the RELACION fixture.
+        art01 = session.query(Articulo).filter_by(codigo="ART01").one()
+        prov_p001 = session.query(Proveedor).filter_by(codigo="P001").one()
+        ap_01 = (
+            session.query(ArticuloProveedor)
+            .filter_by(articulo_id=art01.id, proveedor_id=prov_p001.id)
+            .one()
+        )
+        assert ap_01.cantidad_por_pack == Decimal("5")
+
+        art09 = session.query(Articulo).filter_by(codigo="ART09").one()
+        ap_09 = (
+            session.query(ArticuloProveedor)
+            .filter_by(articulo_id=art09.id, proveedor_id=prov_p001.id)
+            .one()
+        )
+        assert ap_09.cantidad_por_pack == Decimal("1")
