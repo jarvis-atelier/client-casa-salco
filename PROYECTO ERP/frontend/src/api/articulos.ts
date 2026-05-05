@@ -16,7 +16,9 @@ export interface ArticulosQuery {
 export interface ArticuloCreatePayload {
   codigo: string;
   descripcion: string;
-  codigo_barras?: string | null;
+  /** Backend lo persiste como `ArticuloCodigo` con `tipo='principal'`.
+   *  Antes era `codigo_barras` — renombrado en `articulo-multi-codigo-migration`. */
+  codigo_principal?: string | null;
   descripcion_corta?: string | null;
   familia_id?: number | null;
   rubro_id?: number | null;
@@ -45,5 +47,16 @@ export async function createArticulo(
   payload: ArticuloCreatePayload,
 ): Promise<Articulo> {
   const { data } = await apiClient.post<Articulo>("/articulos", payload);
+  return data;
+}
+
+/**
+ * Lookup exacto por código. Usado en la hot path del POS (scanner) para
+ * evitar el LIKE de `/articulos?q=…`. Devuelve 404 si el código no existe.
+ */
+export async function getArticuloByCodigo(codigo: string): Promise<Articulo> {
+  const { data } = await apiClient.get<Articulo>(
+    `/articulos/by-codigo/${encodeURIComponent(codigo)}`,
+  );
   return data;
 }

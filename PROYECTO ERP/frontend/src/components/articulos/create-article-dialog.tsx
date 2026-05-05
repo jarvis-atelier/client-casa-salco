@@ -43,7 +43,9 @@ const IVA_OPCIONES = ["0", "10.50", "21", "27"];
 interface FormState {
   codigo: string;
   descripcion: string;
-  codigo_barras: string;
+  // Renombrado en `articulo-multi-codigo-migration` — el label UI mantiene
+  // "Código de barras" por convención; el payload va como `codigo_principal`.
+  codigo_principal: string;
   descripcion_corta: string;
   unidad_medida: UnidadMedida;
   familia_id: string;
@@ -61,7 +63,7 @@ interface FormState {
 const INITIAL: FormState = {
   codigo: "",
   descripcion: "",
-  codigo_barras: "",
+  codigo_principal: "",
   descripcion_corta: "",
   unidad_medida: "unidad",
   familia_id: "",
@@ -214,7 +216,7 @@ export function CreateArticleDialog({ open, onOpenChange }: Props) {
     const payload: ArticuloCreatePayload = {
       codigo: form.codigo.trim(),
       descripcion: form.descripcion.trim(),
-      codigo_barras: form.codigo_barras.trim() || null,
+      codigo_principal: form.codigo_principal.trim() || null,
       descripcion_corta: form.descripcion_corta.trim() || null,
       unidad_medida: form.unidad_medida,
       familia_id: form.familia_id ? Number(form.familia_id) : null,
@@ -284,11 +286,13 @@ export function CreateArticleDialog({ open, onOpenChange }: Props) {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="codigo_barras">Código de barras</Label>
+                {/* Label legacy preservado — el campo backend es `codigo_principal`
+                    pero la UI sigue diciendo "Código de barras" por convención. */}
+                <Label htmlFor="codigo_principal">Código de barras</Label>
                 <Input
-                  id="codigo_barras"
-                  value={form.codigo_barras}
-                  onChange={(e) => set("codigo_barras", e.target.value)}
+                  id="codigo_principal"
+                  value={form.codigo_principal}
+                  onChange={(e) => set("codigo_principal", e.target.value)}
                   disabled={loading}
                   placeholder="EAN-13 / UPC"
                 />

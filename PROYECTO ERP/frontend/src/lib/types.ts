@@ -78,13 +78,40 @@ export interface Proveedor {
 }
 
 /**
+ * Tipo de código asociado a un artículo. Sólo `principal` se popula en
+ * Change A; `alterno`, `empaquetado`, e `interno` los escribe Change B.
+ */
+export type TipoCodigoArticulo =
+  | "principal"
+  | "alterno"
+  | "empaquetado"
+  | "interno";
+
+/**
+ * Fila hija de `articulo_codigos`. El backend la devuelve en `Articulo.codigos`
+ * vía `lazy="selectin"`. Para create/update usar `codigo_principal` en el
+ * payload (sólo Change A — multi-código se gestiona en Change B).
+ */
+export interface ArticuloCodigo {
+  id: number;
+  articulo_id: number;
+  codigo: string;
+  tipo: TipoCodigoArticulo;
+}
+
+/**
  * El backend devuelve decimales como string (ej "890.0000").
  * Convertir con `parseDecimal` antes de mostrar.
  */
 export interface Articulo {
   id: number;
   codigo: string;
-  codigo_barras?: string | null;
+  /** Sólo se usa en el payload de creación; el backend lo persiste como
+   *  `ArticuloCodigo` con `tipo='principal'`. NO viene en la respuesta. */
+  codigo_principal?: string | null;
+  /** Lista de códigos asociados al artículo (lectura — populated server-side
+   *  via selectin). Reemplaza al antiguo `codigo_barras`. */
+  codigos?: ArticuloCodigo[];
   descripcion: string;
   descripcion_corta?: string | null;
   unidad_medida?: string | null;

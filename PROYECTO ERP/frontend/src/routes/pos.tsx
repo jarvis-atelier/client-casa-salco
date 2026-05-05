@@ -19,7 +19,7 @@ import {
   createFactura,
   type FacturaCreatePayload,
 } from "@/api/facturas";
-import { listArticulos } from "@/api/articulos";
+import { getArticuloByCodigo, listArticulos } from "@/api/articulos";
 import { listClientes } from "@/api/clientes";
 import { listSucursales } from "@/api/sucursales";
 import {
@@ -176,19 +176,35 @@ const PosArticleSearch = React.forwardRef<HTMLInputElement, PosArticleSearchProp
 
     const items = data?.items ?? [];
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const handleKeyDown = async (
+      e: React.KeyboardEvent<HTMLInputElement>,
+    ) => {
       if (e.key === "Enter") {
         e.preventDefault();
         const q = query.trim();
         if (!q) return;
-        // Si hay match exacto por código o código_barras → agregar.
+        // Match exacto en el cache cliente (codigo principal o cualquiera
+        // de los `codigos` cargados por la respuesta del search).
         const exact = items.find(
-          (a) => a.codigo === q || a.codigo_barras === q,
+          (a) => a.codigo === q || a.codigos?.some((c) => c.codigo === q),
         );
         if (exact) {
           onAdd(exact);
           setQuery("");
           return;
+        }
+        // Fast-path: hot loop del scanner. Llama al endpoint dedicado
+        // `/articulos/by-codigo/<c>` antes de caer al search-by-q. Si la
+        // request 404ea (código desconocido) o falla, seguimos al fallback.
+        try {
+          const found = await getArticuloByCodigo(q);
+          if (found) {
+            onAdd(found);
+            setQuery("");
+            return;
+          }
+        } catch {
+          // intencional: caemos al fallback
         }
         if (items.length === 1) {
           onAdd(items[0]);
@@ -235,7 +251,12 @@ const PosArticleSearch = React.forwardRef<HTMLInputElement, PosArticleSearchProp
                   </p>
                   <p className="text-[11px] text-muted-foreground font-mono">
                     {a.codigo}
-                    {a.codigo_barras && ` · ${a.codigo_barras}`}
+                    {(() => {
+                      const principal = a.codigos?.find(
+                        (c) => c.tipo === "principal",
+                      )?.codigo;
+                      return principal ? ` · ${principal}` : null;
+                    })()}
                   </p>
                 </div>
                 <span className="tabular-nums text-[13px] font-medium">
