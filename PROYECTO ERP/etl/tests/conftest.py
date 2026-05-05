@@ -9,9 +9,14 @@ import sys
 from pathlib import Path
 
 # Hace visible el paquete `app` del backend ANTES de importar mappers.
+# `PROJECT_ROOT` (parent of etl/) se agrega tambien para que los xls mappers
+# importen como `from etl.xls.mappers.common_xls import ...` (absoluto desde
+# la raiz del proyecto). Los DBF mappers usan imports relativos asi que les
+# alcanza con `ETL_ROOT` en sys.path.
 ETL_ROOT = Path(__file__).resolve().parent.parent
-BACKEND_ROOT = ETL_ROOT.parent / "backend"
-for p in (BACKEND_ROOT, ETL_ROOT):
+PROJECT_ROOT = ETL_ROOT.parent
+BACKEND_ROOT = PROJECT_ROOT / "backend"
+for p in (BACKEND_ROOT, ETL_ROOT, PROJECT_ROOT):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
