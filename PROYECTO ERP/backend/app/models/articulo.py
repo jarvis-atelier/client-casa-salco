@@ -15,6 +15,7 @@ from sqlalchemy import (
     Numeric,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -119,6 +120,12 @@ class ArticuloProveedor(Base, TimestampMixin):
     )
     codigo_proveedor: Mapped[str | None] = mapped_column(String(50), nullable=True)
     costo_proveedor: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False, default=0)
+    cantidad_por_pack: Mapped[Decimal] = mapped_column(
+        Numeric(10, 3),
+        nullable=False,
+        default=Decimal("1"),
+        server_default=text("1"),
+    )
     ultimo_ingreso: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

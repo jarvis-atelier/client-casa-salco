@@ -55,3 +55,21 @@ class ArticuloOut(ArticuloBase):
     created_at: datetime
     updated_at: datetime
     codigos: list[ArticuloCodigoOut] = []
+
+
+class ArticuloProveedorBase(BaseModel):
+    proveedor_id: int
+    codigo_proveedor: str | None = Field(default=None, max_length=50)
+    costo_proveedor: Decimal = Decimal("0")
+    cantidad_por_pack: Decimal = Decimal("1")
+
+
+class ArticuloProveedorCreate(ArticuloProveedorBase):
+    pass
+
+
+class ArticuloProveedorOut(ArticuloProveedorBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    articulo_id: int
