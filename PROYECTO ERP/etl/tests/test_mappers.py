@@ -191,7 +191,10 @@ class TestArticulos:
         sintetico = [{
             "codigo": "ART-001",
             "descripcion": "Articulo Test",
-            "codigo_barras": None,
+            # `_principal_codigo` reemplaza al ex-campo `codigo_barras`:
+            # el mapper lo emite como signal privado y `load()` lo escribe
+            # como `ArticuloCodigo(tipo='principal')` post-flush.
+            "_principal_codigo": None,
             "_legacy_rubro": None,
             "_legacy_linea": None,
             "_legacy_proveedor": None,
@@ -227,7 +230,9 @@ class TestArticulos:
         rows = [{
             "codigo": "ART-002",
             "descripcion": "Yerba Playadito 1kg",
-            "codigo_barras": "7790001111111",
+            # `_principal_codigo`: ex `codigo_barras`. El loader lo
+            # consume y escribe un `ArticuloCodigo(tipo='principal')`.
+            "_principal_codigo": "7790001111111",
             "_legacy_rubro": None,
             "_legacy_linea": None,
             "_legacy_proveedor": None,
