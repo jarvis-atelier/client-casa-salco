@@ -17,8 +17,11 @@ Build a `Report` instance with run metadata + per-entity `LoadReport` objects +
 6. `## Distinct catalog values seen` — counts of distinct rubros/grupos/marcas/
    grupdesc/categorias derived from legacy_catalog (expected ~612 rubros,
    ~2052 marcas on real data).
-7. `## Junk filtered` — first 20 + "and N more".
-8. `## Errors` — first 20 + "and N more".
+7. `## Sheets skipped` — sheets deferred from this import (e.g. EMPAQUETADOS
+   DE PRODUCTOS pending the multi-codigo model). Each entry is `{sheet} —
+   {reason}`. Empty list renders as `(none)`.
+8. `## Junk filtered` — first 20 + "and N more".
+9. `## Errors` — first 20 + "and N more".
 
 Empty sections render as `(none)`.
 
@@ -99,6 +102,11 @@ class Report:
           `articulos_xls.extract`.
         fk_unresolved: optional override for FK warnings — defaults to deriving
           from `load_reports`.
+        sheets_skipped: list of `(sheet_name, reason)` tuples for sheets
+          deferred from this import. Defaults to a single entry for
+          `EMPAQUETADOS DE PRODUCTOS` (deferred to the multi-codigo change).
+          Future imports that pick up that sheet should pass `sheets_skipped=[]`
+          (or omit the entry) when constructing the Report.
         junk_filtered: optional list of junk-filtered rows (free-form strings).
           Defaults to empty (current mappers log junk at INFO, not as warnings).
         errors: optional list of error strings. Defaults to empty.
@@ -114,6 +122,11 @@ class Report:
     legacy_catalog: list = field(default_factory=list)
     compra_zero: list = field(default_factory=list)
     fk_unresolved: list = field(default_factory=list)
+    sheets_skipped: list = field(
+        default_factory=lambda: [
+            ("EMPAQUETADOS DE PRODUCTOS", "pending multi-codigo model (next change)"),
+        ]
+    )
     junk_filtered: list = field(default_factory=list)
     errors: list = field(default_factory=list)
 
@@ -133,6 +146,8 @@ class Report:
         lines.extend(self._raw_catalog_lines())
         lines.append("")
         lines.extend(self._distinct_counts_lines())
+        lines.append("")
+        lines.extend(self._sheets_skipped_lines())
         lines.append("")
         lines.extend(self._junk_filtered_lines())
         lines.append("")
@@ -234,6 +249,26 @@ class Report:
             f"- Distinct grupdesc: {len(grupdesc)}",
             f"- Distinct categorias: {len(categorias)}",
         ]
+
+    def _sheets_skipped_lines(self) -> list[str]:
+        """Render `## Sheets skipped` (S12 — deferred sheets list).
+
+        Each entry is rendered as `- {sheet} — {reason}`. Empty list shows
+        `(none)`. The default value lists EMPAQUETADOS DE PRODUCTOS — see
+        the dataclass docstring; future changes that import it should
+        construct the Report with `sheets_skipped=[]`.
+        """
+        out = ["## Sheets skipped"]
+        if not self.sheets_skipped:
+            out.append("(none)")
+            return out
+        out.extend(
+            _truncate(
+                [f"- {sheet} — {reason}" for sheet, reason in self.sheets_skipped],
+                SECTION_TRUNCATE_AT,
+            )
+        )
+        return out
 
     def _junk_filtered_lines(self) -> list[str]:
         out = ["## Junk filtered"]

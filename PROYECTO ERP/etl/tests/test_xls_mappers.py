@@ -572,11 +572,47 @@ class TestReportShape:
             "## FK no resueltos",
             "## Raw catalog values preserved",
             "## Distinct catalog values seen",
+            "## Sheets skipped",
             "## Junk filtered",
             "## Errors",
             "Distinct rubros:",
+            # S12 mandates the deferred-sheet bullet text exactly.
+            "EMPAQUETADOS DE PRODUCTOS — pending multi-codigo model (next change)",
         ):
             assert needle in md, f"missing section: {needle!r}\n---\n{md}"
+
+    def test_sheets_skipped_empty_renders_none(self):
+        """Constructing Report with `sheets_skipped=[]` renders `(none)`.
+
+        Future changes that pick up EMPAQUETADOS DE PRODUCTOS will pass an
+        empty list — the section MUST still be present (per spec S12) but
+        with `(none)` matching the existing empty-section convention.
+        """
+        from etl.mappers.common import LoadReport
+
+        report = Report(
+            source_proveedores="x.xls",
+            source_articulos="y.xls",
+            source_articulos_proveedores="z.xls",
+            timestamp="2026-05-04T23:59:59Z",
+            duration_seconds=0.0,
+            exit_status="success",
+            load_reports={
+                "Proveedor": LoadReport(entity="Proveedor"),
+                "Articulo": LoadReport(entity="Articulo"),
+                "ArticuloProveedor": LoadReport(entity="ArticuloProveedor"),
+            },
+            sheets_skipped=[],
+        )
+        md = report.to_markdown()
+        assert "## Sheets skipped" in md
+        # The section heading is followed by `(none)` on the next line.
+        section = md.split("## Sheets skipped", 1)[1]
+        # Look at just the first non-empty line after the heading.
+        first_body_line = next(
+            line for line in section.splitlines()[1:] if line.strip()
+        )
+        assert first_body_line == "(none)"
 
 
 class TestIntraSheetDuplicateLastWins:
