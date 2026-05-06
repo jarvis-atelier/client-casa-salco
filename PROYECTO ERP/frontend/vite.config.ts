@@ -20,8 +20,8 @@ export default defineConfig({
         type: "module",
       },
       manifest: {
-        name: "Jarvis Core ERP",
-        short_name: "Jarvis Core",
+        name: "CASA SALCO ERP",
+        short_name: "CASA SALCO",
         description: "Sistema de gestión integral multi-sucursal",
         theme_color: "#fafafa",
         background_color: "#fafafa",
