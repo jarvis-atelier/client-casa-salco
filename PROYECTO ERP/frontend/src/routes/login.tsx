@@ -26,7 +26,7 @@ function LoginPage() {
   const { toast } = useToast();
   const setAuth = useAuth((s) => s.login);
 
-  const [email, setEmail] = React.useState("admin@castulo.app");
+  const [email, setEmail] = React.useState("admin@casasalco.app");
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
 
@@ -69,7 +69,7 @@ function LoginPage() {
           <div className="flex flex-col items-center mb-10">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[32px] font-semibold tracking-tight leading-none">
-                Jarvis Core
+                CASA SALCO
               </span>
               <span className="h-2 w-2 rounded-full bg-primary" />
             </div>
@@ -115,7 +115,7 @@ function LoginPage() {
         </div>
 
         <p className="mt-6 text-center text-[11px] text-muted-foreground">
-          Jarvis Core · v0.1.0
+          CASA SALCO · v0.1.0
         </p>
       </div>
     </div>

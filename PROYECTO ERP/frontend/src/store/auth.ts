@@ -36,7 +36,7 @@ export const useAuth = create<AuthState>()(
         set({ user: null, accessToken: null, refreshToken: null }),
     }),
     {
-      name: "castulo.auth",
+      name: "casasalco.auth",
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         user: state.user,

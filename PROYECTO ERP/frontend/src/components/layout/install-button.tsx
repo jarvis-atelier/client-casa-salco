@@ -15,7 +15,7 @@ export function InstallButton() {
   const onClick = React.useCallback(async () => {
     if (isIOS) {
       toast({
-        title: "Instalá Jarvis Core en tu iPhone",
+        title: "Instalá CASA SALCO en tu iPhone",
         description:
           "Tocá Compartir → Añadir a pantalla principal para usarlo como app.",
       });
@@ -24,7 +24,7 @@ export function InstallButton() {
     const outcome = await promptInstall();
     if (outcome === "accepted") {
       toast({
-        title: "Jarvis Core instalado",
+        title: "CASA SALCO instalado",
         description: "Ahora podés abrirlo desde tu pantalla principal.",
       });
     }
@@ -38,7 +38,7 @@ export function InstallButton() {
       variant="ghost"
       size="icon"
       onClick={onClick}
-      aria-label="Instalar Jarvis Core como app"
+      aria-label="Instalar CASA SALCO como app"
       title="Instalar como app"
     >
       <Download className="h-[18px] w-[18px]" strokeWidth={1.5} />

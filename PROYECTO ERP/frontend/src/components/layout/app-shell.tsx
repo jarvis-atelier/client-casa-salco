@@ -39,14 +39,14 @@ function getTitle(pathname: string): string {
   const prefix = Object.keys(TITLES).find(
     (p) => p !== "/" && pathname.startsWith(p),
   );
-  return prefix ? TITLES[prefix] : "Jarvis Core";
+  return prefix ? TITLES[prefix] : "CASA SALCO";
 }
 
 function SidebarBrand() {
   return (
     <div className="flex items-center gap-2 px-5 py-5">
       <span className="text-[18px] font-semibold tracking-tight leading-none">
-        Jarvis Core
+        CASA SALCO
       </span>
       <span className="h-1.5 w-1.5 rounded-full bg-primary" />
     </div>
@@ -83,7 +83,7 @@ export function AppShell({ children }: AppShellProps) {
           <SheetHeader className="px-5 py-5">
             <SheetTitle className="flex items-center gap-2">
               <span className="text-[18px] font-semibold tracking-tight">
-                Jarvis Core
+                CASA SALCO
               </span>
               <span className="h-1.5 w-1.5 rounded-full bg-primary" />
             </SheetTitle>

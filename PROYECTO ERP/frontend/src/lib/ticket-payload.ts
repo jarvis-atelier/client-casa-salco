@@ -21,7 +21,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_COMERCIO: ComercioPayload = {
-  razon_social: "Castulo SA",
+  razon_social: "CASA SALCO",
   cuit: "30-12345678-9",
   direccion: "Av. San Martín 1200, Río Cuarto, Córdoba",
   telefono: "0358-4636700",

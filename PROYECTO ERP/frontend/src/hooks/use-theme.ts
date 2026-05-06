@@ -2,7 +2,7 @@ import * as React from "react";
 
 export type Theme = "light" | "dark" | "system";
 
-const STORAGE_KEY = "castulo.theme";
+const STORAGE_KEY = "casasalco.theme";
 
 function getSystemTheme(): "light" | "dark" {
   if (typeof window === "undefined") return "light";
