@@ -7,13 +7,22 @@ la heuristica isolada en `_tipo_heuristic.py` (B3).
 
 ## Headers reales del sheet 'EMPAQUETADOS DE PRODUCTOS'
 
-Verificados via xlrd directo en B1 (Phase 1 pre-flight, observation #561):
+Re-verificados (B8b): los headers reales son `'Código' | 'Artículo' |
+'Cantidad'` (CON acentos, codepoints 0xf3 y 0xed respectivamente). El B1
+audit (observation #561) los reporto como ASCII puro y eso era incorrecto.
 
-    Codigo | Articulo | Cantidad
+Por eso `read_sheet` (que decodea headers via `decode_xls_str` y los usa
+como keys del dict) no matcheaba los lookups `row.get("Codigo")` —
+producian None en las 22683 filas y la fase escribia 0 rows.
 
-NO trailing spaces. Los headers son ASCII puro / sin acentos relevantes;
-`decode_xls_str` los pasa intactos. El sheet name TIENE espacios:
-`'EMPAQUETADOS DE PRODUCTOS'`.
+Fix B8b: bypass el dict y leer por POSICION (col 0/1/2) abriendo el
+workbook directamente. `decode_xls_str` se sigue aplicando sobre los
+VALUES (codigos string) — las cantidades son float y pasan intactas.
+
+NO se modifica `decode_xls_str` ni `read_sheet` (otros mappers funcionan
+con headers ASCII y dependen del path por header-dict).
+
+El sheet name TIENE espacios: `'EMPAQUETADOS DE PRODUCTOS'`.
 
 ## Mapeo a `app.models.ArticuloCodigo`
 
@@ -71,24 +80,28 @@ import logging
 from collections.abc import Iterable
 from pathlib import Path
 
+import xlrd
+
 from app.models import Articulo
 from app.models.articulo_codigo import ArticuloCodigo
 
 from etl.mappers.common import LoadReport, clean_str
 from etl.xls.mappers._tipo_heuristic import assign_tipos
-from etl.xls.mappers.common_xls import read_sheet
+from etl.xls.mappers.common_xls import decode_xls_str
 
 logger = logging.getLogger("etl.xls.empaquetados")
 
 
 # ---------------------------------------------------------------------------
-# Header constants — VERIFICADOS via B1 audit (observation #561).
-# ASCII puro, sin trailing spaces.
+# Column positions — fix B8b.
+# Headers reales tienen acentos (`Código`, `Artículo`); el lookup por nombre
+# fallaba en `row.get("Codigo")`. Usamos posicion fija porque la sheet
+# tiene SOLO 3 columnas y el orden es estable en el legacy.
 # ---------------------------------------------------------------------------
 
-COL_CODIGO = "Codigo"
-COL_ARTICULO = "Articulo"
-COL_CANTIDAD = "Cantidad"
+COL_IDX_CODIGO = 0
+COL_IDX_ARTICULO = 1
+COL_IDX_CANTIDAD = 2
 
 
 # Sheet name CON espacios (verificado).
@@ -162,70 +175,105 @@ def extract(
     pre_heuristic_rows: list[dict] = []
     skipped: list[dict] = []
 
-    path_str = str(workbook_path)
-    for row_idx, row in enumerate(read_sheet(path_str, sheet_name), start=2):
-        # row_idx empieza en 2 porque la fila 1 es header (consumida por read_sheet).
+    # Fix B8b: open workbook directly + iterate POSITIONAL.
+    # No usamos `read_sheet` aca porque los headers reales tienen acentos
+    # (`Código`, `Artículo`) y el lookup por nombre no matchea los
+    # constants. Otros mappers (proveedores/articulos/articulos_proveedores)
+    # mantienen `read_sheet` porque sus headers son ASCII estables.
+    book = xlrd.open_workbook(
+        str(workbook_path), on_demand=True, formatting_info=False,
+    )
+    try:
+        sheet = book.sheet_by_name(sheet_name)
+        rows_iter = sheet.get_rows()
+        try:
+            next(rows_iter)  # skip header row 0
+        except StopIteration:
+            return [], []
 
-        codigo = clean_str(row.get(COL_CODIGO), max_len=50)
-        codigo_articulo = clean_str(row.get(COL_ARTICULO))
-        cantidad_raw = row.get(COL_CANTIDAD)
+        for row_idx, raw_row in enumerate(rows_iter, start=2):
+            # row_idx empieza en 2 porque la fila 1 es header (skipped above).
 
-        # Junk: codigo empaquetado vacio / '0000' / None
-        if codigo is None or codigo == "" or codigo == "0000":
-            logger.info(
-                "row=%d skip codigo=%r articulo=%r reason='codigo empaquetado vacio o 0000'",
-                row_idx, codigo, codigo_articulo,
+            codigo_raw = (
+                raw_row[COL_IDX_CODIGO].value
+                if len(raw_row) > COL_IDX_CODIGO else None
             )
-            skipped.append({
-                "_row": row_idx,
+            articulo_raw = (
+                raw_row[COL_IDX_ARTICULO].value
+                if len(raw_row) > COL_IDX_ARTICULO else None
+            )
+            cantidad_raw = (
+                raw_row[COL_IDX_CANTIDAD].value
+                if len(raw_row) > COL_IDX_CANTIDAD else None
+            )
+
+            # decode_xls_str solo aplica a strings; no toca floats/ints/None.
+            if isinstance(codigo_raw, str):
+                codigo_raw = decode_xls_str(codigo_raw)
+            if isinstance(articulo_raw, str):
+                articulo_raw = decode_xls_str(articulo_raw)
+
+            codigo = clean_str(codigo_raw, max_len=50)
+            codigo_articulo = clean_str(articulo_raw)
+
+            # Junk: codigo empaquetado vacio / '0000' / None
+            if codigo is None or codigo == "" or codigo == "0000":
+                logger.info(
+                    "row=%d skip codigo=%r articulo=%r reason='codigo empaquetado vacio o 0000'",
+                    row_idx, codigo, codigo_articulo,
+                )
+                skipped.append({
+                    "_row": row_idx,
+                    "codigo": codigo,
+                    "codigo_articulo": codigo_articulo,
+                    "reason": (
+                        f"row {row_idx}: codigo empaquetado vacio/0000, skipped (junk)"
+                    ),
+                })
+                continue
+
+            # FK resolution.
+            if codigo_articulo is None or codigo_articulo == "":
+                logger.warning(
+                    "row=%d skip codigo=%r — codigo articulo vacio",
+                    row_idx, codigo,
+                )
+                skipped.append({
+                    "_row": row_idx,
+                    "codigo": codigo,
+                    "codigo_articulo": codigo_articulo,
+                    "reason": (
+                        f"row {row_idx}: codigo articulo vacio (codigo={codigo!r}), skipped"
+                    ),
+                })
+                continue
+
+            articulo_id = articulo_cache.get(codigo_articulo)
+            if articulo_id is None:
+                logger.warning(
+                    "row=%d skip codigo=%r — articulo codigo=%r not found in DB",
+                    row_idx, codigo, codigo_articulo,
+                )
+                skipped.append({
+                    "_row": row_idx,
+                    "codigo": codigo,
+                    "codigo_articulo": codigo_articulo,
+                    "reason": (
+                        f"row {row_idx}: FK miss articulo {codigo_articulo!r} "
+                        f"(codigo={codigo!r}), skipped"
+                    ),
+                })
+                continue
+
+            pre_heuristic_rows.append({
+                "articulo_id": articulo_id,
                 "codigo": codigo,
                 "codigo_articulo": codigo_articulo,
-                "reason": (
-                    f"row {row_idx}: codigo empaquetado vacio/0000, skipped (junk)"
-                ),
-            })
-            continue
-
-        # FK resolution.
-        if codigo_articulo is None or codigo_articulo == "":
-            logger.warning(
-                "row=%d skip codigo=%r — codigo articulo vacio",
-                row_idx, codigo,
-            )
-            skipped.append({
+                "cantidad": cantidad_raw,
                 "_row": row_idx,
-                "codigo": codigo,
-                "codigo_articulo": codigo_articulo,
-                "reason": (
-                    f"row {row_idx}: codigo articulo vacio (codigo={codigo!r}), skipped"
-                ),
             })
-            continue
-
-        articulo_id = articulo_cache.get(codigo_articulo)
-        if articulo_id is None:
-            logger.warning(
-                "row=%d skip codigo=%r — articulo codigo=%r not found in DB",
-                row_idx, codigo, codigo_articulo,
-            )
-            skipped.append({
-                "_row": row_idx,
-                "codigo": codigo,
-                "codigo_articulo": codigo_articulo,
-                "reason": (
-                    f"row {row_idx}: FK miss articulo {codigo_articulo!r} "
-                    f"(codigo={codigo!r}), skipped"
-                ),
-            })
-            continue
-
-        pre_heuristic_rows.append({
-            "articulo_id": articulo_id,
-            "codigo": codigo,
-            "codigo_articulo": codigo_articulo,
-            "cantidad": cantidad_raw,
-            "_row": row_idx,
-        })
+    finally:
+        book.release_resources()
 
     # Apply tipo heuristic over the FULL list (groups by codigo_articulo).
     # Returns the same list reference with each dict updated to include 'tipo'.
