@@ -3,16 +3,17 @@
 @tailwind utilities;
 
 /* ============================================================
-   CASA SALCO — Tema brand
+   CASA SALCO — Brand palette (logo-accurate, 2026-05-06)
    - Light: off-white #fafafa (como macOS light)
    - Dark: near-black #0a0a0a (como macOS dark)
-   - Accent: Apple Blue #007AFF
+   - Primary: deep navy from CASA box on logo
+   - Accent: cobalt accent from logo
    - Neutros cálidos (slight brown tint en light, neutral puro en dark)
    ============================================================ */
 
 @layer base {
-  /* CASA SALCO brand palette — cobalt primary, deep navy accent.
-     Hex approximations from logo (logo.png). Confirm with cliente if needed. */
+  /* CASA SALCO brand palette — logo-accurate (2026-05-06).
+     Primary = navy from CASA box, Accent = cobalt from logo strokes. */
   :root {
     --background: 0 0% 98%;            /* #fafafa */
     --foreground: 240 10% 3.9%;        /* near-black */
@@ -23,7 +24,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
 
-    --primary: 226 67% 36%;             /* CASA SALCO cobalt #1E3A99 */
+    --primary: 232 75% 25%;             /* CASA SALCO logo navy (CASA box) */
     --primary-foreground: 0 0% 100%;
 
     --secondary: 240 4.8% 95.9%;
@@ -32,7 +33,7 @@
     --muted: 240 4.8% 95.9%;
     --muted-foreground: 240 3.8% 46.1%;
 
-    --accent: 233 75% 24%;              /* CASA SALCO deep navy #0F1E6B */
+    --accent: 232 70% 50%;              /* CASA SALCO logo cobalt accent */
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84.2% 60.2%;
@@ -40,7 +41,7 @@
 
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
-    --ring: 226 67% 45%;                /* lifted cobalt for focus visibility */
+    --ring: 232 70% 38%;                /* lifted navy for focus visibility */
 
     --radius: 0.75rem;                  /* 12px — el Apple default */
   }
@@ -55,7 +56,7 @@
     --popover: 240 6% 10%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 226 70% 58%;             /* lifted cobalt for dark bg */
+    --primary: 232 70% 55%;             /* lifted navy for dark bg */
     --primary-foreground: 0 0% 100%;
 
     --secondary: 240 3.7% 15.9%;
@@ -64,7 +65,7 @@
     --muted: 240 3.7% 15.9%;
     --muted-foreground: 240 5% 64.9%;
 
-    --accent: 226 60% 50%;              /* mid cobalt for accent on dark */
+    --accent: 232 65% 60%;              /* logo cobalt for accent on dark */
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 62.8% 50%;
@@ -72,7 +73,7 @@
 
     --border: 240 3.7% 18%;
     --input: 240 3.7% 18%;
-    --ring: 226 70% 60%;
+    --ring: 232 70% 60%;
   }
 
   * {
