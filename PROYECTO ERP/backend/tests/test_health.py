@@ -9,4 +9,4 @@ def test_v1_root(client):
     r = client.get("/api/v1/")
     assert r.status_code == 200
     body = r.get_json()
-    assert body["api"] == "castulo"
+    assert body["api"] == "casasalco"

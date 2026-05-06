@@ -23,7 +23,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: castulo_test
+          POSTGRES_DB: casasalco_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -65,7 +65,7 @@ jobs:
       - name: Pytest
         working-directory: backend
         env:
-          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/castulo_test
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/casasalco_test
           REDIS_URL: redis://localhost:6379/0
           JWT_SECRET_KEY: test-secret-key
           SECRET_KEY: test-secret

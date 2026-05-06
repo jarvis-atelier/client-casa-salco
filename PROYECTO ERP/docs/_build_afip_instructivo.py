@@ -439,7 +439,7 @@ N("Volver a https://auth.afip.gob.ar/")
 N("Buscar \"Administracion de puntos de venta y domicilios\"")
 N("\"Agregar\" un punto de venta")
 N("\"Numero\": 1 (queda como 00001)")
-N("\"Nombre de Fantasia\": el de tu sucursal principal (ej. \"Castulo Centro\")")
+N("\"Nombre de Fantasia\": el de tu sucursal principal (ej. \"CASA SALCO Centro\")")
 N("\"Sistema\": elegir \"RECE para aplicativo y web services\"")
 N("\"Domicilio\": agregar el de la sucursal")
 N("Confirmar")
@@ -464,7 +464,7 @@ P(
 H3("Copiar los archivos al servidor")
 
 P("Crear la carpeta:")
-CODE("D:\\repo\\00-omar\\Castulo\\nuevo\\backend\\instance\\afip_certs\\27225151992\\")
+CODE("D:\\repo\\00-omar\\CASA SALCO\\PROYECTO ERP\\backend\\instance\\afip_certs\\27225151992\\")
 
 P("Copiar los archivos:")
 CODE(
@@ -501,7 +501,7 @@ CALLOUT(
 H3("Reiniciar el backend")
 
 CODE(
-    "cd D:\\repo\\00-omar\\Castulo\\nuevo\\backend\n"
+    "cd D:\\repo\\00-omar\\CASA SALCO\\PROYECTO ERP\\backend\n"
     ".venv\\Scripts\\python.exe wsgi.py"
 )
 
@@ -511,7 +511,7 @@ H1("11. Paso 8 - Probar emision real")
 
 P("Hace una venta de prueba para validar que todo esta conectado:")
 
-N("Login en http://localhost:5173 con admin@castulo.app")
+N("Login en http://localhost:5173 con admin@casasalco.app")
 N("Ir a Punto de Venta")
 N("Seleccionar la sucursal SUC01")
 N("Cargar 1-2 articulos al carrito")

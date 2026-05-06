@@ -1,4 +1,4 @@
-# Castulo Nuevo
+# CASA SALCO
 
 Sistema de gestión integral para almacén multi-sucursal.
 Reingeniería del sistema Harbour legacy (`../viejo/`).

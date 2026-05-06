@@ -1,24 +1,24 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: castulo_postgres
+    container_name: casasalco_postgres
     environment:
-      POSTGRES_USER: castulo
-      POSTGRES_PASSWORD: castulo_dev
-      POSTGRES_DB: castulo
+      POSTGRES_USER: casasalco
+      POSTGRES_PASSWORD: casasalco_dev
+      POSTGRES_DB: casasalco
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U castulo"]
+      test: ["CMD-SHELL", "pg_isready -U casasalco"]
       interval: 5s
       timeout: 3s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: castulo_redis
+    container_name: casasalco_redis
     ports:
       - "6379:6379"
     volumes:

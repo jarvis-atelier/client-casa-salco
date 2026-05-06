@@ -4,7 +4,7 @@ Admin + 4 sucursales con áreas + padrones mínimos + 5 artículos con precios
 por sucursal + stock inicial 100u por (artículo, sucursal) + cliente CF.
 
 Credenciales admin dev:
-    email:    admin@castulo.app
+    email:    admin@casasalco.app
     password: admin123     (DEV-ONLY, cambiar antes de producción)
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ from app.services.auth_service import hash_password
 _SUCURSALES = [
     {
         "codigo": "SUC01",
-        "nombre": "Castulo Centro",
+        "nombre": "CASA SALCO Centro",
         "direccion": "Av. San Martín 1200",
         "ciudad": "Rio Cuarto",
         "provincia": "Cordoba",
@@ -34,7 +34,7 @@ _SUCURSALES = [
     },
     {
         "codigo": "SUC02",
-        "nombre": "Castulo Norte",
+        "nombre": "CASA SALCO Norte",
         "direccion": "Av. Mitre 450",
         "ciudad": "Rio Cuarto",
         "provincia": "Cordoba",
@@ -42,7 +42,7 @@ _SUCURSALES = [
     },
     {
         "codigo": "SUC03",
-        "nombre": "Castulo Sur",
+        "nombre": "CASA SALCO Sur",
         "direccion": "Bv. Roca 890",
         "ciudad": "Rio Cuarto",
         "provincia": "Cordoba",
@@ -50,7 +50,7 @@ _SUCURSALES = [
     },
     {
         "codigo": "SUC04",
-        "nombre": "Castulo Express",
+        "nombre": "CASA SALCO Express",
         "direccion": "Av. España 210",
         "ciudad": "Rio Cuarto",
         "provincia": "Cordoba",
@@ -121,10 +121,10 @@ _ARTICULOS = [
 def seed_demo() -> None:
     """Idempotente — no duplica si ya hay datos. Incluye stock inicial 100u."""
     # Admin
-    admin = db.session.query(User).filter(User.email == "admin@castulo.app").first()
+    admin = db.session.query(User).filter(User.email == "admin@casasalco.app").first()
     if admin is None:
         admin = User(
-            email="admin@castulo.app",
+            email="admin@casasalco.app",
             password_hash=hash_password("admin123"),  # DEV-ONLY
             nombre="Administrador Demo",
             rol=RolEnum.admin,

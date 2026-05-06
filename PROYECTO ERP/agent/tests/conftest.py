@@ -86,14 +86,14 @@ def sample_payload(**overrides) -> TicketPayload:
     base = dict(
         tipo="ticket",
         comercio=Comercio(
-            razon_social="Castulo SA",
+            razon_social="CASA SALCO SA",
             cuit="30-12345678-9",
             direccion="Av. San Martin 1200, Rio Cuarto",
             telefono="0358-4636700",
             iibb="900-123456",
             inicio_actividades="2010-01-01",
         ),
-        sucursal=SucursalPayload(codigo="SUC01", nombre="Castulo Centro", punto_venta=1),
+        sucursal=SucursalPayload(codigo="SUC01", nombre="CASA SALCO Centro", punto_venta=1),
         comprobante=ComprobantePayload(
             tipo_letra="X",
             numero=12,

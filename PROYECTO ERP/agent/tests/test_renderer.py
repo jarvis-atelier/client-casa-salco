@@ -7,7 +7,7 @@ from jarvis_agent.ticket.renderer import render_ticket
 def test_basic_ticket_has_razon_social_in_header(factura_a_payload):
     out = render_ticket(factura_a_payload)
     text = "\n".join(out.lines)
-    assert "CASTULO SA" in text
+    assert "CASA SALCO SA" in text
     # Should contain ESC/POS init bytes
     assert out.escpos_bytes.startswith(b"\x1b@")
     # Should end with cut command

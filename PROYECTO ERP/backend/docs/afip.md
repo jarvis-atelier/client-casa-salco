@@ -27,7 +27,7 @@ b. Generar clave privada + CSR (Certificate Signing Request):
 
 ```bash
 openssl genrsa -out privada.key 2048
-openssl req -new -key privada.key -subj "/C=AR/O=MiEmpresa/CN=Castulo/serialNumber=CUIT 20123456789" -out solicitud.csr
+openssl req -new -key privada.key -subj "/C=AR/O=MiEmpresa/CN=CASA SALCO/serialNumber=CUIT 20123456789" -out solicitud.csr
 ```
 
 c. En el sitio de AFIP: **Administrador de Relaciones de Clave Fiscal**

@@ -11,7 +11,7 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent
 INSTANCE_DIR = BACKEND_ROOT / "instance"
 INSTANCE_DIR.mkdir(exist_ok=True)
 AFIP_CERT_DIR_DEFAULT = INSTANCE_DIR / "afip_certs"
-_DEFAULT_SQLITE_URL = f"sqlite:///{(INSTANCE_DIR / 'castulo.db').as_posix()}"
+_DEFAULT_SQLITE_URL = f"sqlite:///{(INSTANCE_DIR / 'casasalco.db').as_posix()}"
 
 
 class Settings(BaseSettings):

@@ -2,7 +2,7 @@
 
 Uso:
     python scripts/migrate_sqlite_to_postgres.py \\
-        --sqlite backend/instance/castulo.db \\
+        --sqlite backend/instance/casasalco.db \\
         --postgres "postgresql+psycopg://user:pass@host:5432/jarvis" \\
         [--truncate] [--dry-run]
 

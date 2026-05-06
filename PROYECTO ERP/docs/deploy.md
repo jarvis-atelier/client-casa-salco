@@ -104,7 +104,7 @@ Fly compila el `backend/Dockerfile`, ejecuta `flask db upgrade` automaticamente 
 ```bash
 # Desde tu maquina local:
 python scripts/migrate_sqlite_to_postgres.py \
-  --sqlite backend/instance/castulo.db \
+  --sqlite backend/instance/casasalco.db \
   --postgres "postgresql+psycopg://user:pass@ep-xxx.us-east-1.aws.neon.tech/neondb?sslmode=require"
 ```
 
@@ -275,7 +275,7 @@ Cron diario:
 ```bash
 # /etc/cron.daily/jarvis-backup
 #!/bin/bash
-docker exec castulo_postgres pg_dump -U jarvis jarvis | gzip > /backups/jarvis-$(date +%F).sql.gz
+docker exec casasalco_postgres pg_dump -U jarvis jarvis | gzip > /backups/jarvis-$(date +%F).sql.gz
 # Subir a S3 / Backblaze B2 con rclone
 rclone copy /backups remote:jarvis-backups
 # Limpiar locales > 7 dias

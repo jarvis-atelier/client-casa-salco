@@ -113,13 +113,13 @@ def _cuit(tipo: str, dni: str) -> str:
 # -------- datos sucursales (mismos que demo)
 
 _SUCURSALES = [
-    {"codigo": "SUC01", "nombre": "Castulo Centro", "direccion": "Av. San Martín 1200",
+    {"codigo": "SUC01", "nombre": "CASA SALCO Centro", "direccion": "Av. San Martín 1200",
      "ciudad": "Rio Cuarto", "provincia": "Cordoba", "tiene_fiambre": True, "peso": 0.35},
-    {"codigo": "SUC02", "nombre": "Castulo Norte", "direccion": "Av. Mitre 450",
+    {"codigo": "SUC02", "nombre": "CASA SALCO Norte", "direccion": "Av. Mitre 450",
      "ciudad": "Rio Cuarto", "provincia": "Cordoba", "tiene_fiambre": True, "peso": 0.30},
-    {"codigo": "SUC03", "nombre": "Castulo Sur", "direccion": "Bv. Roca 890",
+    {"codigo": "SUC03", "nombre": "CASA SALCO Sur", "direccion": "Bv. Roca 890",
      "ciudad": "Rio Cuarto", "provincia": "Cordoba", "tiene_fiambre": False, "peso": 0.20},
-    {"codigo": "SUC04", "nombre": "Castulo Express", "direccion": "Av. España 210",
+    {"codigo": "SUC04", "nombre": "CASA SALCO Express", "direccion": "Av. España 210",
      "ciudad": "Rio Cuarto", "provincia": "Cordoba", "tiene_fiambre": True, "peso": 0.15},
 ]
 
@@ -165,7 +165,7 @@ def _wipe(echo) -> None:
         db.session.execute(text(f"DELETE FROM {tbl}"))
     # Usuarios no-admin también se borran (para dejar sólo al admin original)
     db.session.execute(
-        db.text("DELETE FROM users WHERE email != 'admin@castulo.app'")
+        db.text("DELETE FROM users WHERE email != 'admin@casasalco.app'")
     )
     db.session.commit()
 
@@ -298,10 +298,10 @@ def seed_big(force: bool = False) -> None:
 
 
 def _ensure_admin(echo) -> None:
-    admin = db.session.query(User).filter(User.email == "admin@castulo.app").first()
+    admin = db.session.query(User).filter(User.email == "admin@casasalco.app").first()
     if admin is None:
         admin = User(
-            email="admin@castulo.app",
+            email="admin@casasalco.app",
             password_hash=hash_password("admin123"),
             nombre="Administrador Demo",
             rol=RolEnum.admin,
@@ -911,7 +911,7 @@ def _seed_users(echo, suc_by_code: dict[str, Sucursal]) -> int:
 
     # Cajeros — uno por sucursal
     for i, suc in enumerate(sucursales[:4], start=1):
-        email = f"cajero{i}@castulo.app"
+        email = f"cajero{i}@casasalco.app"
         if db.session.query(User).filter(User.email == email).first():
             continue
         nuevos.append(
@@ -926,7 +926,7 @@ def _seed_users(echo, suc_by_code: dict[str, Sucursal]) -> int:
         )
     # Supervisores
     for i in range(1, 3):
-        email = f"supervisor{i}@castulo.app"
+        email = f"supervisor{i}@casasalco.app"
         if db.session.query(User).filter(User.email == email).first():
             continue
         nuevos.append(
@@ -939,10 +939,10 @@ def _seed_users(echo, suc_by_code: dict[str, Sucursal]) -> int:
             )
         )
     # Contador
-    if not db.session.query(User).filter(User.email == "contador@castulo.app").first():
+    if not db.session.query(User).filter(User.email == "contador@casasalco.app").first():
         nuevos.append(
             User(
-                email="contador@castulo.app",
+                email="contador@casasalco.app",
                 password_hash=hash_password("contador123"),
                 nombre="Contador",
                 rol=RolEnum.contador,

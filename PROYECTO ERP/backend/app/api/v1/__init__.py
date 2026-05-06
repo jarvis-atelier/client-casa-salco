@@ -7,7 +7,7 @@ v1_root = Blueprint("v1_root", __name__, url_prefix="/api/v1")
 
 @v1_root.get("/")
 def index():
-    return jsonify(api="castulo", version="v1", status="ok")
+    return jsonify(api="casasalco", version="v1", status="ok")
 
 
 def register_blueprints(app: Flask) -> None:

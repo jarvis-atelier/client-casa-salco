@@ -17,7 +17,7 @@ exposes it at `/preview/<id>` — perfect for development without hardware.
 ## Quick start (development, mock mode)
 
 ```bash
-cd D:\repo\00-omar\Castulo\nuevo\agent
+cd D:\repo\00-omar\CASA SALCO\PROYECTO ERP\agent
 "C:\Users\Administrador\AppData\Local\Programs\Python\Python311\python.exe" -m venv .venv
 .venv\Scripts\pip install -e ".[dev]"
 copy .env.example .env
@@ -50,8 +50,8 @@ the authoritative Pydantic schemas. Minimal body:
 ```json
 {
   "tipo": "ticket",
-  "comercio": {"razon_social":"Castulo SA","cuit":"30-12345678-9"},
-  "sucursal": {"codigo":"SUC01","nombre":"Castulo Centro","punto_venta":1},
+  "comercio": {"razon_social":"CASA SALCO SA","cuit":"30-12345678-9"},
+  "sucursal": {"codigo":"SUC01","nombre":"CASA SALCO Centro","punto_venta":1},
   "comprobante": {"tipo_letra":"X","numero":12,"fecha":"2026-04-24T18:30:00"},
   "items": [{
     "codigo":"ARRZ-001","descripcion":"Arroz 1kg",

@@ -1,4 +1,4 @@
-# Arquitectura — Castulo Nuevo
+# Arquitectura — CASA SALCO
 
 ## Topología (objetivo Fase 2)
 

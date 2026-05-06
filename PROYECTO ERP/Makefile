@@ -6,7 +6,7 @@ XLS_FILE1 ?= ../3EB052EF592E1D591FBB8C-h00ugz.xls
 XLS_FILE2 ?= ../3EB07DF9C6673E43F507BE-615s0b.xls
 
 help:
-	@echo "Castulo Nuevo - comandos disponibles:"
+	@echo "CASA SALCO - comandos disponibles:"
 	@echo ""
 	@echo "  make infra-up               Levanta Postgres + Redis (Docker)"
 	@echo "  make infra-down             Apaga Postgres + Redis"

@@ -1,7 +1,7 @@
 [project]
-name = "castulo-backend"
+name = "casasalco-backend"
 version = "0.1.0"
-description = "Backend Flask para Castulo Nuevo - gestion de almacen multi-sucursal"
+description = "Backend Flask para CASA SALCO - gestion de almacen multi-sucursal"
 requires-python = ">=3.11"
 dependencies = [
     "flask>=3.0",
