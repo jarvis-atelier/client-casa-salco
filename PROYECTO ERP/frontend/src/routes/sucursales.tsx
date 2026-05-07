@@ -8,11 +8,13 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { requireAccess } from "@/lib/permissions";
 import { appLayoutRoute } from "./app-layout";
 
 export const sucursalesRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/sucursales",
+  beforeLoad: requireAccess("/sucursales"),
   component: SucursalesPage,
 });
 

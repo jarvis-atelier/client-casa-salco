@@ -1,4 +1,6 @@
 import { createRoute, Outlet, redirect } from "@tanstack/react-router";
+import { hasAccess } from "@/lib/permissions";
+import { useAuth } from "@/store/auth";
 import { appLayoutRoute } from "./app-layout";
 
 /**
@@ -10,6 +12,13 @@ export const comprasRoute = createRoute({
   path: "/compras",
   component: ComprasLayout,
   beforeLoad: ({ location }) => {
+    const { accessToken, user } = useAuth.getState();
+    if (!accessToken) {
+      throw redirect({ to: "/login" });
+    }
+    if (!hasAccess(user?.rol, "/compras")) {
+      throw redirect({ to: "/" });
+    }
     if (location.pathname === "/compras") {
       throw redirect({ to: "/compras/ocr" });
     }

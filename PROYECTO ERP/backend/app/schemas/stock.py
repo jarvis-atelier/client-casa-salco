@@ -5,6 +5,19 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class StockArticuloEmbedded(BaseModel):
+    """Subset del Articulo embebido en respuestas de stock para evitar el
+    fetch masivo del catálogo desde el frontend."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    codigo: str
+    descripcion: str
+    costo: Decimal | None = None
+    pvp_base: Decimal | None = None
+
+
 class StockSucursalOut(BaseModel):
     """Stock con todos los campos persistidos.
 
@@ -35,8 +48,22 @@ class StockSucursalOut(BaseModel):
     efectivo_lead_time: int | None = None
     estado_reposicion: str | None = None
 
+    # Articulo embebido — evita fetch separado del catálogo en el frontend.
+    articulo: StockArticuloEmbedded | None = None
+
     created_at: datetime
     updated_at: datetime
+
+
+class StockResumen(BaseModel):
+    """Conteos por estado de reposición para una sucursal."""
+
+    total: int
+    agotado: int
+    critico: int
+    reorden: int
+    sobrestock: int
+    ok: int
 
 
 class StockAjusteRequest(BaseModel):

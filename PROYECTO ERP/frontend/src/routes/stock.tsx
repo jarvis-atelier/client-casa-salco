@@ -1,17 +1,15 @@
 import * as React from "react";
 import { createRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import {
   Boxes,
   ChevronLeft,
   ChevronRight,
   Search,
 } from "lucide-react";
-import { listArticulos } from "@/api/articulos";
-import { stockBySucursal } from "@/api/stock";
+import { stockBySucursal, stockResumen } from "@/api/stock";
 import { listSucursales } from "@/api/sucursales";
 import type {
-  Articulo,
   EstadoReposicion,
   StockSucursalRow,
   Sucursal,
@@ -62,6 +60,15 @@ const FILTROS: { id: FiltroId; label: string }[] = [
   { id: "sobrestock", label: "Sobrestock" },
   { id: "ok", label: "OK" },
 ];
+
+const FILTRO_TO_ESTADO: Record<FiltroId, EstadoReposicion | "bajo_minimo" | undefined> = {
+  todos: undefined,
+  bajo_minimo: "bajo_minimo",
+  en_reorden: "reorden",
+  agotado: "agotado",
+  sobrestock: "sobrestock",
+  ok: "ok",
+};
 
 function formatMoney(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "—";
@@ -139,19 +146,15 @@ function StatCard({ label, value, tone = "default" }: StatCardProps) {
 }
 
 interface RowComputed {
-  articulo: Articulo;
   stockRow: StockSucursalRow;
   cantidad: number;
   pvp: number | null;
   costo: number | null;
-  valor: number | null;
   estadoRep: EstadoReposicion;
-  // Efectivos (override sucursal o default articulo)
   efectivoMin: number | null;
   efectivoMax: number | null;
   efectivoReorden: number | null;
   efectivoLeadTime: number | null;
-  // Banderas: ¿el valor proviene del default del articulo (no de la sucursal)?
   isMinDefault: boolean;
   isMaxDefault: boolean;
   isReordenDefault: boolean;
@@ -192,45 +195,46 @@ function StockPage() {
     setPage(1);
   }, [debouncedQuery, filtro, sucursalId]);
 
+  const estadoApi = FILTRO_TO_ESTADO[filtro];
+
   const stockQ = useQuery({
-    queryKey: ["stock", "bySucursal", sucursalId],
+    queryKey: [
+      "stock",
+      "bySucursal",
+      sucursalId,
+      page,
+      PER_PAGE,
+      debouncedQuery,
+      estadoApi,
+    ],
     queryFn: () =>
-      sucursalId ? stockBySucursal(sucursalId) : Promise.resolve([]),
+      stockBySucursal({
+        sucursalId: sucursalId!,
+        page,
+        perPage: PER_PAGE,
+        q: debouncedQuery.trim() || undefined,
+        estado: estadoApi as EstadoReposicion | undefined,
+      }),
+    enabled: Boolean(sucursalId),
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+
+  // Conteos por estado (independientes del filtro/búsqueda) para los stat cards.
+  const resumenQ = useQuery({
+    queryKey: ["stock", "resumen", sucursalId],
+    queryFn: () => stockResumen(sucursalId!),
     enabled: Boolean(sucursalId),
     staleTime: 30_000,
   });
 
-  const articulosQ = useQuery({
-    queryKey: ["articulos", "all-for-stock"],
-    queryFn: async () => {
-      const PER = 200;
-      const first = await listArticulos({ page: 1, per_page: PER });
-      const acc: Articulo[] = [...first.items];
-      for (let p = 2; p <= (first.pages ?? 1); p++) {
-        const next = await listArticulos({ page: p, per_page: PER });
-        acc.push(...next.items);
-      }
-      return acc;
-    },
-    staleTime: 60_000,
-  });
-
-  const articulosById = React.useMemo(() => {
-    const map = new Map<number, Articulo>();
-    (articulosQ.data ?? []).forEach((a) => map.set(a.id, a));
-    return map;
-  }, [articulosQ.data]);
-
   const rows: RowComputed[] = React.useMemo(() => {
-    const stockRows: StockSucursalRow[] = stockQ.data ?? [];
+    const items = stockQ.data?.items ?? [];
     const out: RowComputed[] = [];
-    for (const r of stockRows) {
-      const art = articulosById.get(r.articulo_id);
-      if (!art) continue;
+    for (const r of items) {
       const cantidad = parseDecimal(r.cantidad) ?? 0;
-      const pvp = parseDecimal(art.pvp_base);
-      const costo = parseDecimal(art.costo);
-      const valor = costo !== null ? cantidad * costo : null;
+      const pvp = parseDecimal(r.articulo?.pvp_base ?? null);
+      const costo = parseDecimal(r.articulo?.costo ?? null);
       const efectivoMin = parseDecimal(r.efectivo_minimo ?? null);
       const efectivoMax = parseDecimal(r.efectivo_maximo ?? null);
       const efectivoReorden = parseDecimal(r.efectivo_reorden ?? null);
@@ -245,12 +249,10 @@ function StockPage() {
         (r.punto_reorden === null || r.punto_reorden === undefined);
       const estadoRep: EstadoReposicion = r.estado_reposicion ?? "ok";
       out.push({
-        articulo: art,
         stockRow: r,
         cantidad,
         pvp,
         costo,
-        valor,
         estadoRep,
         efectivoMin,
         efectivoMax,
@@ -262,67 +264,45 @@ function StockPage() {
       });
     }
     return out;
-  }, [stockQ.data, articulosById]);
-
-  const filtered = React.useMemo(() => {
-    let arr = rows;
-    if (filtro === "bajo_minimo")
-      arr = arr.filter(
-        (r) => r.estadoRep === "critico" || r.estadoRep === "agotado",
-      );
-    else if (filtro === "en_reorden")
-      arr = arr.filter((r) => r.estadoRep === "reorden");
-    else if (filtro === "agotado")
-      arr = arr.filter((r) => r.estadoRep === "agotado");
-    else if (filtro === "sobrestock")
-      arr = arr.filter((r) => r.estadoRep === "sobrestock");
-    else if (filtro === "ok") arr = arr.filter((r) => r.estadoRep === "ok");
-
-    if (debouncedQuery.trim()) {
-      const q = debouncedQuery.trim().toLowerCase();
-      arr = arr.filter(
-        (r) =>
-          r.articulo.codigo.toLowerCase().includes(q) ||
-          r.articulo.descripcion.toLowerCase().includes(q),
-      );
-    }
-    return arr;
-  }, [rows, filtro, debouncedQuery]);
+  }, [stockQ.data?.items]);
 
   const stats = React.useMemo(() => {
-    let totalArt = 0;
-    let bajoMin = 0;
-    let enReorden = 0;
-    let sobrestock = 0;
-    for (const r of rows) {
-      totalArt += 1;
-      if (r.estadoRep === "agotado" || r.estadoRep === "critico") bajoMin += 1;
-      else if (r.estadoRep === "reorden") enReorden += 1;
-      else if (r.estadoRep === "sobrestock") sobrestock += 1;
+    const r = resumenQ.data;
+    if (!r) {
+      return { totalArt: 0, bajoMin: 0, enReorden: 0, sobrestock: 0 };
     }
-    return { totalArt, bajoMin, enReorden, sobrestock };
-  }, [rows]);
+    return {
+      totalArt: r.total,
+      bajoMin: r.agotado + r.critico,
+      enReorden: r.reorden,
+      sobrestock: r.sobrestock,
+    };
+  }, [resumenQ.data]);
 
-  const total = filtered.length;
-  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
-  const safePage = Math.min(page, pages);
-  const sliceFrom = (safePage - 1) * PER_PAGE;
+  const total = stockQ.data?.total ?? 0;
+  const pages = stockQ.data?.pages ?? 1;
+  const sliceFrom = (page - 1) * PER_PAGE;
   const sliceTo = Math.min(sliceFrom + PER_PAGE, total);
-  const pageItems = filtered.slice(sliceFrom, sliceTo);
 
   const sucursalActual = sucursales.find((s) => s.id === sucursalId);
 
   const isLoading =
-    sucursalesQ.isLoading ||
-    stockQ.isLoading ||
-    articulosQ.isLoading ||
-    !sucursalId;
+    sucursalesQ.isLoading || stockQ.isLoading || !sucursalId;
 
   const openAjuste = (r: RowComputed) => {
     if (!sucursalId || !sucursalActual) return;
     const sr = r.stockRow;
+    const art = sr.articulo;
+    if (!art) return;
     setAjusteTarget({
-      articulo: r.articulo,
+      // El dialog espera un Articulo completo — armamos uno mínimo con lo embedded.
+      articulo: {
+        id: art.id,
+        codigo: art.codigo,
+        descripcion: art.descripcion,
+        costo: art.costo ?? null,
+        pvp_base: art.pvp_base ?? null,
+      } as StockAjusteTarget["articulo"],
       sucursalId,
       sucursalNombre: sucursalActual.nombre,
       cantidadActual: r.cantidad,
@@ -386,21 +366,45 @@ function StockPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="Total"
-          value={isLoading ? <Skeleton className="h-7 w-16" /> : stats.totalArt}
+          value={
+            resumenQ.isLoading ? (
+              <Skeleton className="h-7 w-16" />
+            ) : (
+              stats.totalArt
+            )
+          }
         />
         <StatCard
           label="Bajo mínimo"
-          value={isLoading ? <Skeleton className="h-7 w-16" /> : stats.bajoMin}
+          value={
+            resumenQ.isLoading ? (
+              <Skeleton className="h-7 w-16" />
+            ) : (
+              stats.bajoMin
+            )
+          }
           tone={stats.bajoMin > 0 ? "destructive" : "default"}
         />
         <StatCard
           label="En reorden"
-          value={isLoading ? <Skeleton className="h-7 w-16" /> : stats.enReorden}
+          value={
+            resumenQ.isLoading ? (
+              <Skeleton className="h-7 w-16" />
+            ) : (
+              stats.enReorden
+            )
+          }
           tone={stats.enReorden > 0 ? "warning" : "default"}
         />
         <StatCard
           label="Sobrestock"
-          value={isLoading ? <Skeleton className="h-7 w-16" /> : stats.sobrestock}
+          value={
+            resumenQ.isLoading ? (
+              <Skeleton className="h-7 w-16" />
+            ) : (
+              stats.sobrestock
+            )
+          }
           tone={stats.sobrestock > 0 ? "rose" : "default"}
         />
       </div>
@@ -463,7 +467,9 @@ function StockPage() {
                     </TableCell>
                   </TableRow>
                 ))
-              : pageItems.map((r) => {
+              : rows.map((r) => {
+                  const art = r.stockRow.articulo;
+                  if (!art) return null;
                   const cantColor =
                     r.estadoRep === "agotado" || r.estadoRep === "critico"
                       ? "text-destructive"
@@ -474,15 +480,15 @@ function StockPage() {
                           : "text-foreground";
                   return (
                     <TableRow
-                      key={r.articulo.id}
+                      key={r.stockRow.id}
                       className="cursor-pointer"
                       onClick={() => openAjuste(r)}
                     >
                       <TableCell className="font-mono text-[12px] text-muted-foreground">
-                        {r.articulo.codigo}
+                        {art.codigo}
                       </TableCell>
                       <TableCell className="font-medium text-foreground">
-                        {r.articulo.descripcion}
+                        {art.descripcion}
                         {r.estadoRep === "agotado" && (
                           <Badge
                             variant="destructive"
@@ -540,7 +546,7 @@ function StockPage() {
                   );
                 })}
 
-            {!isLoading && pageItems.length === 0 && (
+            {!isLoading && rows.length === 0 && !stockQ.isError && (
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={7} className="py-16">
                   <div className="flex flex-col items-center gap-3 text-center">
@@ -567,7 +573,7 @@ function StockPage() {
               </TableRow>
             )}
 
-            {(stockQ.isError || articulosQ.isError) && (
+            {stockQ.isError && (
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={7} className="py-12 text-center">
                   <p className="text-[13px] text-destructive">
@@ -591,19 +597,19 @@ function StockPage() {
             variant="outline"
             size="sm"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={safePage <= 1 || isLoading}
+            disabled={page <= 1 || stockQ.isFetching}
           >
             <ChevronLeft strokeWidth={1.5} />
             Anterior
           </Button>
           <span className="text-[13px] tabular-nums text-muted-foreground min-w-[64px] text-center">
-            {safePage} / {pages}
+            {page} / {Math.max(1, pages)}
           </span>
           <Button
             variant="outline"
             size="sm"
             onClick={() => setPage((p) => Math.min(pages, p + 1))}
-            disabled={safePage >= pages || isLoading}
+            disabled={page >= pages || stockQ.isFetching}
           >
             Siguiente
             <ChevronRight strokeWidth={1.5} />

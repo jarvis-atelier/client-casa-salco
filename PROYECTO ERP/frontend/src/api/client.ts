@@ -6,8 +6,20 @@ import axios, {
 import { useAuth, getAccessToken, getRefreshToken } from "@/store/auth";
 import { enqueue } from "@/lib/offline/queue";
 
+/**
+ * Resuelve un path absoluto del backend respetando el `base` de Vite.
+ * En dev (base="/") devuelve `/api/v1/...`; detrás de un reverse-proxy
+ * con prefix (`base="/casasalco/"`) devuelve `/casasalco/api/v1/...`.
+ */
+export function apiPath(path: string): string {
+  const base = import.meta.env.BASE_URL || "/";
+  const left = base.endsWith("/") ? base.slice(0, -1) : base;
+  const right = path.startsWith("/") ? path : `/${path}`;
+  return `${left}${right}`;
+}
+
 export const apiClient = axios.create({
-  baseURL: "/api/v1",
+  baseURL: apiPath("/api/v1"),
   timeout: 15_000,
 });
 
@@ -32,7 +44,7 @@ async function refreshAccessToken(): Promise<string | null> {
   if (!refresh) return null;
   try {
     const { data } = await axios.post<{ access_token: string }>(
-      "/api/v1/auth/refresh",
+      apiPath("/api/v1/auth/refresh"),
       {},
       {
         headers: { Authorization: `Bearer ${refresh}` },

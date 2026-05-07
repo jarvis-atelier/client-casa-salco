@@ -49,11 +49,13 @@ import {
   type ConsultaParams,
   type EntidadConsulta,
 } from "@/api/consultas";
+import { requireAccess } from "@/lib/permissions";
 import { appLayoutRoute } from "./app-layout";
 
 export const consultasRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/consultas",
+  beforeLoad: requireAccess("/consultas"),
   component: ConsultasPage,
 });
 

@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  base: "/casasalco/",
   plugins: [
     react(),
     VitePWA({
@@ -28,29 +29,29 @@ export default defineConfig({
         display: "standalone",
         orientation: "any",
         lang: "es-AR",
-        scope: "/",
-        start_url: "/",
+        scope: "/casasalco/",
+        start_url: "/casasalco/",
         icons: [
           {
-            src: "/icons/icon-192.png",
+            src: "/casasalco/icons/icon-192.png",
             sizes: "192x192",
             type: "image/png",
             purpose: "any",
           },
           {
-            src: "/icons/icon-512.png",
+            src: "/casasalco/icons/icon-512.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "any",
           },
           {
-            src: "/icons/icon-192-maskable.png",
+            src: "/casasalco/icons/icon-192-maskable.png",
             sizes: "192x192",
             type: "image/png",
             purpose: "maskable",
           },
           {
-            src: "/icons/icon-512-maskable.png",
+            src: "/casasalco/icons/icon-512-maskable.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable",
@@ -58,9 +59,9 @@ export default defineConfig({
         ],
       },
       workbox: {
-        navigateFallback: "/index.html",
+        navigateFallback: "/casasalco/index.html",
         // Endpoints autenticados y socket.io NO deben ser interceptados.
-        navigateFallbackDenylist: [/^\/api\//, /^\/socket\.io\//],
+        navigateFallbackDenylist: [/^\/casasalco\/api\//, /^\/casasalco\/socket\.io\//],
         runtimeCaching: [
           {
             // Catálogos casi-estáticos: stale-while-revalidate.
@@ -76,7 +77,7 @@ export default defineConfig({
           },
           {
             // Listado de artículos: NetworkFirst con TTL corto.
-            urlPattern: ({ url }) => url.pathname.startsWith("/api/v1/articulos"),
+            urlPattern: ({ url }) => /\/api\/v1\/articulos/.test(url.pathname),
             handler: "NetworkFirst",
             options: {
               cacheName: "api-articulos",

@@ -56,11 +56,13 @@ import type {
 } from "@/lib/types";
 import { parseDecimal } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { requireAccess } from "@/lib/permissions";
 import { appLayoutRoute } from "./app-layout";
 
 export const posRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/pos",
+  beforeLoad: requireAccess("/pos"),
   component: PosPage,
 });
 

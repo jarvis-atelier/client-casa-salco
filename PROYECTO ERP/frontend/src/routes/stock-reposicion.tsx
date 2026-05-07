@@ -37,11 +37,13 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/store/auth";
 import { cn } from "@/lib/utils";
+import { requireAccess } from "@/lib/permissions";
 import { appLayoutRoute } from "./app-layout";
 
 export const stockReposicionRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/stock/reposicion",
+  beforeLoad: requireAccess("/stock/reposicion"),
   component: StockReposicionPage,
 });
 

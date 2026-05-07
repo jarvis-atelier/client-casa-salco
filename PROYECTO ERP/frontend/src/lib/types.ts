@@ -299,6 +299,14 @@ export type EstadoReposicion =
   | "sobrestock"
   | "ok";
 
+export interface StockArticuloEmbedded {
+  id: number;
+  codigo: string;
+  descripcion: string;
+  costo?: string | null;
+  pvp_base?: string | null;
+}
+
 export interface StockSucursalRow {
   id: number;
   articulo_id: number;
@@ -317,8 +325,19 @@ export interface StockSucursalRow {
   efectivo_reorden?: string | null;
   efectivo_lead_time?: number | null;
   estado_reposicion?: EstadoReposicion | null;
+  // Articulo embebido (codigo, descripcion, costo, pvp_base) — desde 2026-05-07.
+  articulo?: StockArticuloEmbedded | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface StockResumen {
+  total: number;
+  agotado: number;
+  critico: number;
+  reorden: number;
+  sobrestock: number;
+  ok: number;
 }
 
 export interface StockAjustePayload {

@@ -1,4 +1,4 @@
-import { apiClient } from "./client";
+import { apiClient, apiPath } from "./client";
 import type {
   OrdenCompraPayload,
   OrdenCompraResult,
@@ -50,6 +50,6 @@ export async function getSugerenciaArticulo(
 }
 
 export function downloadListaReposicionXlsx(sucursalId?: number): string {
-  const base = "/api/v1/reports/lista-reposicion.xlsx";
+  const base = apiPath("/api/v1/reports/lista-reposicion.xlsx");
   return sucursalId ? `${base}?sucursal_id=${sucursalId}` : base;
 }

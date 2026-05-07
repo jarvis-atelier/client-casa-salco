@@ -20,11 +20,13 @@ import {
 import { ProveedorFormDialog } from "@/components/proveedores/proveedor-form-dialog";
 import { ProveedorDetailSheet } from "@/components/proveedores/proveedor-detail-sheet";
 import { cn } from "@/lib/utils";
+import { requireAccess } from "@/lib/permissions";
 import { appLayoutRoute } from "./app-layout";
 
 export const proveedoresRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/proveedores",
+  beforeLoad: requireAccess("/proveedores"),
   component: ProveedoresPage,
 });
 

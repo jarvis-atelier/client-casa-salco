@@ -1,4 +1,4 @@
-import { apiClient } from "./client";
+import { apiClient, apiPath } from "./client";
 import type { Paginated } from "@/lib/types";
 
 export type EstadoOcr =
@@ -135,7 +135,7 @@ export async function getComprobante(id: number): Promise<ComprobanteOcr> {
 }
 
 export function getImagenUrl(id: number): string {
-  return `/api/v1/ocr/comprobantes/${id}/imagen`;
+  return apiPath(`/api/v1/ocr/comprobantes/${id}/imagen`);
 }
 
 export async function confirmarComprobante(

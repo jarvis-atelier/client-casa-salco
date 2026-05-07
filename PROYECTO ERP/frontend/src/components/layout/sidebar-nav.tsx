@@ -18,6 +18,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { hasAccess } from "@/lib/permissions";
+import { useAuth } from "@/store/auth";
 
 interface NavItem {
   to?: string;
@@ -51,10 +53,15 @@ interface SidebarNavProps {
 export function SidebarNav({ onNavigate }: SidebarNavProps) {
   const location = useLocation();
   const current = location.pathname;
+  const rol = useAuth((s) => s.user?.rol);
+
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => !item.to || hasAccess(rol, item.to),
+  );
 
   return (
     <nav className="flex flex-col gap-0.5 px-3 py-2">
-      {NAV_ITEMS.map((item) => {
+      {visibleItems.map((item) => {
         const Icon = item.icon;
         // Match exacto cuando hay sub-rutas que comparten prefijo (ej: /stock vs /stock/reposicion)
         const exactOnly = item.to === "/" || item.to === "/stock";

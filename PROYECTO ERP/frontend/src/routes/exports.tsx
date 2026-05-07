@@ -22,11 +22,13 @@ import { ExportCard } from "@/components/exports/export-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { requireAccess } from "@/lib/permissions";
 import { appLayoutRoute } from "./app-layout";
 
 export const exportsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/exports",
+  beforeLoad: requireAccess("/exports"),
   component: ExportsPage,
 });
 

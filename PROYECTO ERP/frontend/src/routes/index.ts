@@ -42,9 +42,15 @@ const routeTree = rootRoute.addChildren([
   notFoundRoute,
 ]);
 
+// `import.meta.env.BASE_URL` viene del `base` de vite.config.ts. En dev = "/",
+// en build con prefix = "/casasalco/". TanStack Router quiere basepath SIN
+// trailing slash.
+const basepath = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+
 export const router = createRouter({
   routeTree,
   defaultPreload: "intent",
+  basepath: basepath || undefined,
 });
 
 declare module "@tanstack/react-router" {

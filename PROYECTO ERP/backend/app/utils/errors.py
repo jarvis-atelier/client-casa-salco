@@ -8,6 +8,8 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import HTTPException
 
+from app.extensions import jwt
+
 
 def _jsonable(obj: Any) -> Any:
     """Convierte recursivamente un objeto a algo que json.dumps pueda manejar.
@@ -59,8 +61,37 @@ def register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(HTTPException)
     def _http(err: HTTPException):
+        message = err.description or err.name or ""
+        # Werkzeug pone un blurb largo en 404 ("...check your spelling..."),
+        # no aporta nada en una API JSON.
+        if err.code == 404 and "requested URL was not found" in message:
+            message = "ruta no encontrada"
         return error_response(
-            err.description or err.name,
+            message or "error",
             status=err.code or 500,
             code=err.name.lower().replace(" ", "_") if err.name else None,
+        )
+
+    # Flask-JWT-Extended por defecto devuelve {"msg": "..."} — armonizamos al
+    # shape {code, error} del resto de la API.
+    @jwt.invalid_token_loader
+    def _jwt_invalid(reason: str):
+        return error_response(reason, status=422, code="invalid_token")
+
+    @jwt.unauthorized_loader
+    def _jwt_unauthorized(reason: str):
+        return error_response(reason, status=401, code="unauthorized")
+
+    @jwt.expired_token_loader
+    def _jwt_expired(_jwt_header, _jwt_payload):
+        return error_response("token expirado", status=401, code="token_expired")
+
+    @jwt.revoked_token_loader
+    def _jwt_revoked(_jwt_header, _jwt_payload):
+        return error_response("token revocado", status=401, code="token_revoked")
+
+    @jwt.needs_fresh_token_loader
+    def _jwt_needs_fresh(_jwt_header, _jwt_payload):
+        return error_response(
+            "se requiere token fresh", status=401, code="fresh_token_required"
         )

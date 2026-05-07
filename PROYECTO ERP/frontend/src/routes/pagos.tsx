@@ -57,6 +57,7 @@ import type {
 } from "@/lib/types";
 import { parseDecimal } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { requireAccess } from "@/lib/permissions";
 import { appLayoutRoute } from "./app-layout";
 
 const PER_PAGE = 25;
@@ -64,6 +65,7 @@ const PER_PAGE = 25;
 export const pagosRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/pagos",
+  beforeLoad: requireAccess("/pagos"),
   component: PagosPage,
 });
 

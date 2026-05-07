@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import joinedload
 
 from app.extensions import db
@@ -23,7 +23,7 @@ from app.models.articulo import Articulo
 from app.models.resumen import MovimientoCaja, TipoMovimientoEnum
 from app.models.stock import StockSucursal
 from app.models.sucursal import Sucursal
-from app.schemas.stock import StockAjusteRequest, StockSucursalOut
+from app.schemas.stock import StockAjusteRequest, StockResumen, StockSucursalOut
 from app.services import stock_service
 from app.services.analytics.sugerencias_reposicion import (
     LEAD_TIME_DEFAULT_DIAS,
@@ -32,6 +32,7 @@ from app.services.analytics.sugerencias_reposicion import (
 from app.services.analytics.velocidad_venta import calcular_velocidad_venta
 from app.utils.auth_guards import roles_required
 from app.utils.errors import error_response
+from app.utils.pagination import get_page_params, paginate_query
 
 bp = Blueprint("stock", __name__, url_prefix="/api/v1/stock")
 
@@ -41,11 +42,72 @@ def _serialize(row: StockSucursal) -> dict:
     return StockSucursalOut.model_validate(row).model_dump(mode="json")
 
 
+_ESTADOS_VALIDOS = {
+    "agotado",
+    "critico",
+    "reorden",
+    "sobrestock",
+    "ok",
+    "bajo_minimo",  # alias compuesto: agotado + critico
+}
+
+
+def _efectivos():
+    """Expresiones SQL que reproducen la property `efectivo_*` del modelo:
+    override de sucursal o, si NULL, default del articulo."""
+    e_min = func.coalesce(StockSucursal.stock_minimo, Articulo.stock_minimo_default)
+    e_reor = func.coalesce(StockSucursal.punto_reorden, Articulo.punto_reorden_default)
+    e_max = func.coalesce(StockSucursal.stock_maximo, Articulo.stock_maximo_default)
+    return e_min, e_reor, e_max
+
+
+def _estado_filter(estado: str):
+    """Devuelve la cláusula SQL para filtrar por estado_reposicion.
+
+    Reproduce el if-elif de StockSucursal.estado_reposicion. Devuelve None si
+    el estado es inválido.
+    """
+    if estado not in _ESTADOS_VALIDOS:
+        return None
+    e_min, e_reor, e_max = _efectivos()
+    cant = StockSucursal.cantidad
+    if estado == "agotado":
+        return cant <= 0
+    no_es_critico = or_(e_min.is_(None), cant > e_min)
+    no_es_reorden = or_(e_reor.is_(None), cant > e_reor)
+    if estado == "critico":
+        return and_(cant > 0, e_min.is_not(None), cant <= e_min)
+    if estado == "bajo_minimo":
+        return or_(
+            cant <= 0,
+            and_(cant > 0, e_min.is_not(None), cant <= e_min),
+        )
+    if estado == "reorden":
+        return and_(cant > 0, no_es_critico, e_reor.is_not(None), cant <= e_reor)
+    if estado == "sobrestock":
+        return and_(
+            cant > 0,
+            no_es_critico,
+            no_es_reorden,
+            e_max.is_not(None),
+            cant > e_max,
+        )
+    # ok
+    return and_(
+        cant > 0,
+        no_es_critico,
+        no_es_reorden,
+        or_(e_max.is_(None), cant <= e_max),
+    )
+
+
 @bp.get("")
 @roles_required("admin", "supervisor", "cajero", "fiambrero", "repositor", "contador")
 def list_stock():
     articulo_id = request.args.get("articulo_id", type=int)
     sucursal_id = request.args.get("sucursal_id", type=int)
+    q = (request.args.get("q") or "").strip()
+    estado = (request.args.get("estado") or "").strip().lower() or None
 
     if not articulo_id and not sucursal_id:
         return error_response(
@@ -60,10 +122,70 @@ def list_stock():
         stmt = stmt.where(StockSucursal.articulo_id == articulo_id)
     if sucursal_id:
         stmt = stmt.where(StockSucursal.sucursal_id == sucursal_id)
+
+    # Filtros que requieren JOIN con Articulo.
+    if q or estado:
+        stmt = stmt.join(Articulo, Articulo.id == StockSucursal.articulo_id)
+        if q:
+            like = f"%{q}%"
+            stmt = stmt.where(
+                or_(Articulo.codigo.ilike(like), Articulo.descripcion.ilike(like))
+            )
+        if estado:
+            cond = _estado_filter(estado)
+            if cond is None:
+                return error_response(
+                    f"estado inválido: {estado}", 422, "invalid_param"
+                )
+            stmt = stmt.where(cond)
+
     stmt = stmt.order_by(StockSucursal.sucursal_id, StockSucursal.articulo_id)
 
-    rows = db.session.execute(stmt).scalars().unique().all()
-    return jsonify([_serialize(r) for r in rows])
+    # Si filtran por articulo_id (resultado chico, esperan lista cruda)
+    # conserva el shape histórico para no romper consumidores.
+    if articulo_id and not sucursal_id:
+        rows = db.session.execute(stmt).scalars().unique().all()
+        return jsonify([_serialize(r) for r in rows])
+
+    page, per_page = get_page_params(default_per_page=50, max_per_page=500)
+    return jsonify(paginate_query(stmt, StockSucursalOut, page, per_page))
+
+
+@bp.get("/resumen")
+@roles_required("admin", "supervisor", "cajero", "fiambrero", "repositor", "contador")
+def stock_resumen():
+    sucursal_id = request.args.get("sucursal_id", type=int)
+    if not sucursal_id:
+        return error_response("sucursal_id requerido", 422, "missing_parameter")
+
+    e_min, e_reor, e_max = _efectivos()
+    cant = StockSucursal.cantidad
+
+    # Cuenta cada estado en una sola query con SUM(CASE WHEN).
+    estado_case = case(
+        (cant <= 0, "agotado"),
+        (and_(e_min.is_not(None), cant <= e_min), "critico"),
+        (and_(e_reor.is_not(None), cant <= e_reor), "reorden"),
+        (and_(e_max.is_not(None), cant > e_max), "sobrestock"),
+        else_="ok",
+    )
+
+    stmt = (
+        select(estado_case.label("estado"), func.count().label("n"))
+        .select_from(StockSucursal)
+        .join(Articulo, Articulo.id == StockSucursal.articulo_id)
+        .where(StockSucursal.sucursal_id == sucursal_id)
+        .group_by(estado_case)
+    )
+    rows = db.session.execute(stmt).all()
+    counts = {estado: 0 for estado in _ESTADOS_VALIDOS}
+    for estado, n in rows:
+        if estado in counts:
+            counts[estado] = int(n)
+    total = sum(counts.values())
+    return jsonify(
+        StockResumen(total=total, **counts).model_dump()
+    )
 
 
 @bp.post("/ajuste")
